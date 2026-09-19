@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QTextEdit, QTextBrowser, QPushButton,
-    QFrame, QSplitter
+    QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication
 )
 from PySide6.QtGui import QCursor
 try:
@@ -91,6 +91,40 @@ class NoteEditorView(QWidget):
         mode_layout.addWidget(self.btn_split)
         mode_layout.addWidget(self.btn_preview)
         header_layout.addWidget(mode_frame)
+
+        # Quick Action Buttons (Duplicate & Share)
+        self.dup_btn = QPushButton("📋", self)
+        self.dup_btn.setToolTip("Duplicate Note")
+        self.dup_btn.setFixedSize(32, 30)
+        self.dup_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.dup_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 6px;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
+        """)
+        self.dup_btn.clicked.connect(self._duplicate_current_note)
+        header_layout.addWidget(self.dup_btn)
+
+        self.share_btn = QPushButton("↗", self)
+        self.share_btn.setToolTip("Share / Export Note")
+        self.share_btn.setFixedSize(32, 30)
+        self.share_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.share_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
+        """)
+        self.share_btn.clicked.connect(self._share_current_note)
+        header_layout.addWidget(self.share_btn)
 
         main_layout.addLayout(header_layout)
 
@@ -224,9 +258,67 @@ class NoteEditorView(QWidget):
             }}
         """)
 
+    def _duplicate_current_note(self):
+        if not self.current_note_id:
+            return
+        self._auto_save()
+        new_id = database.duplicate_note(self.current_note_id)
+        if new_id:
+            QMessageBox.information(self, "Duplicated", "Note duplicated successfully!")
+            self.back_requested.emit()
+
+    def _share_current_note(self):
+        self._auto_save()
+        title = self.title_input.text().strip() or "Untitled Note"
+        content = self.editor.toPlainText()
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #FFFFFF;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 8px;
+                padding: 6px;
+            }
+            QMenu::item {
+                padding: 6px 16px;
+                font-size: 13px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #F1F5F9;
+                color: #0067C0;
+            }
+        """)
+
+        act_copy = menu.addAction("📋 Copy Markdown to Clipboard")
+        act_export_md = menu.addAction("📄 Export as .md file")
+        act_export_html = menu.addAction("🌐 Export as .html file")
+
+        action = menu.exec(QCursor.pos())
+        if action == act_copy:
+            clipboard_text = f"# {title}\n\n{content}"
+            QApplication.clipboard().setText(clipboard_text)
+            QMessageBox.information(self, "Copied", "Note copied to clipboard!")
+        elif action == act_export_md:
+            safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
+            file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as Markdown", f"{safe_title}.md", "Markdown Files (*.md)")
+            if file_path:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(f"# {title}\n\n{content}")
+        elif action == act_export_html:
+            safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
+            file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as HTML", f"{safe_title}.html", "HTML Files (*.html)")
+            if file_path:
+                html_body = markdown2.markdown(content, extras=["fenced-code-blocks", "tables", "task_list", "strike"])
+                full_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{title}</title>{MARKDOWN_PREVIEW_CSS}</head><body><h1>{title}</h1>{html_body}</body></html>"
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(full_html)
+
     def keyPressEvent(self, event):
         # Allow pressing Escape to quickly return to notes
         if event.key() == Qt.Key.Key_Escape:
             self._on_back_clicked()
         else:
             super().keyPressEvent(event)
+

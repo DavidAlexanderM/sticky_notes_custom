@@ -34,6 +34,8 @@ class ColorPickerFlyout(QFrame):
     Floating context menu / flyout for picking note colors and quick actions.
     """
     color_selected = Signal(str)
+    duplicate_requested = Signal()
+    share_requested = Signal()
     delete_requested = Signal()
 
     def __init__(self, parent=None):
@@ -64,7 +66,7 @@ class ColorPickerFlyout(QFrame):
         card.setGraphicsEffect(shadow)
 
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(8)
+        card_layout.setSpacing(6)
         card_layout.setContentsMargins(8, 8, 8, 8)
 
         # Title
@@ -95,6 +97,37 @@ class ColorPickerFlyout(QFrame):
         sep.setStyleSheet("color: rgba(0, 0, 0, 0.08);")
         card_layout.addWidget(sep)
 
+        btn_style = """
+            QPushButton {
+                background-color: transparent;
+                color: #334155;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 12px;
+                font-weight: 600;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: #F1F5F9;
+                color: #0F172A;
+            }
+        """
+
+        # Duplicate Action Button
+        dup_btn = QPushButton("📋 Duplicate Note", card)
+        dup_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        dup_btn.setStyleSheet(btn_style)
+        dup_btn.clicked.connect(self._on_duplicate_clicked)
+        card_layout.addWidget(dup_btn)
+
+        # Share Action Button
+        share_btn = QPushButton("↗ Share / Export...", card)
+        share_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        share_btn.setStyleSheet(btn_style)
+        share_btn.clicked.connect(self._on_share_clicked)
+        card_layout.addWidget(share_btn)
+
         # Delete Action Button
         del_btn = QPushButton("🗑 Delete Note", card)
         del_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -122,6 +155,15 @@ class ColorPickerFlyout(QFrame):
         self.color_selected.emit(hex_code)
         self.close()
 
+    def _on_duplicate_clicked(self):
+        self.duplicate_requested.emit()
+        self.close()
+
+    def _on_share_clicked(self):
+        self.share_requested.emit()
+        self.close()
+
     def _on_delete_clicked(self):
         self.delete_requested.emit()
         self.close()
+

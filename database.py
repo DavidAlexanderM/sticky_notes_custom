@@ -1,13 +1,21 @@
+import os
+import sys
 import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-DB_PATH = Path(__file__).parent / "notes.db"
+def get_db_path() -> Path:
+    """Returns database path. Uses %LOCALAPPDATA%/StickyNotes when packaged as an exe."""
+    if getattr(sys, 'frozen', False):
+        app_data = Path(os.environ.get('LOCALAPPDATA', Path.home())) / "StickyNotes"
+        app_data.mkdir(parents=True, exist_ok=True)
+        return app_data / "notes.db"
+    return Path(__file__).parent / "notes.db"
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -126,3 +134,27 @@ def delete_note(note_id: str) -> None:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         conn.commit()
+
+def duplicate_note(note_id: str) -> Optional[str]:
+    """Creates an exact copy of a note with ' (Copy)' appended to title and returns the new ID."""
+    existing = get_note(note_id)
+    if not existing:
+        return None
+    
+    new_title = f"{existing['title']} (Copy)"
+    return create_note(
+        title=new_title,
+        content=existing["content"],
+        color_hex=existing["color_hex"]
+    )
+
+def delete_multiple_notes(note_ids: List[str]) -> None:
+    """Deletes a list of notes by IDs in a single transaction."""
+    if not note_ids:
+        return
+    placeholders = ",".join("?" for _ in note_ids)
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM notes WHERE id IN ({placeholders})", note_ids)
+        conn.commit()
+

@@ -13,10 +13,12 @@ A minimal, single-window Windows desktop application built with **Python** and *
 * **Single-Window Fluent Minimal Design:**
   * Clean, borderless feel with Segoe UI typography and soft drop shadows.
   * Instant, seamless view transitions without popup clutter.
-* **Sticky Notes Board:**
+* **Sticky Notes Board & Management:**
   * Displays notes in a responsive adaptive grid.
   * Preview titles, Markdown excerpts, and last-modified timestamps.
-  * Pre-seeded with starter notes on first launch.
+  * **Multi-Select & Mass Erase:** Click "Select" to check multiple notes, "Select All", and delete them in bulk with confirmation.
+  * **Duplicate Note:** Duplicate any note from the right-click menu or editor header.
+  * **Share & Export:** Quick-copy formatted markdown to clipboard, or export to `.md` / `.html` files.
 * **Right-Click Color Picker Flyout:**
   * Right-click any note to open a palette with 8 sticky colors (*Butter Yellow, Mint Green, Soft Coral, Lavender, Sky Blue, Warm Peach, Soft Pink, Slate Dark*).
   * Automatically adjusts text contrast for light/dark themes.
@@ -28,7 +30,9 @@ A minimal, single-window Windows desktop application built with **Python** and *
     * `Split`: Live side-by-side editing and formatted Markdown preview.
     * `Preview`: Full rendered rich text view with styled headings, code blocks, checklists, and blockquotes.
 * **Zero Configuration Storage:**
-  * Automatic local SQLite persistence (`notes.db`). Works completely offline.
+  * Automatic local SQLite persistence. Uses `%LOCALAPPDATA%/StickyNotes/notes.db` when packaged as an executable. Works completely offline.
+* **Gift App Ready (Standalone .exe):**
+  * Package into a standalone portable `.zip` or `.exe` via `python build_exe.py` that runs on any Windows PC with zero dependencies.
 
 ---
 
