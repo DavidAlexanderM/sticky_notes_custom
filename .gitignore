@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# SQLite database (optional, un-comment if you want notes kept strictly local)
+# notes.db
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

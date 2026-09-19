@@ -1,0 +1,157 @@
+from datetime import datetime
+import re
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
+    QGraphicsDropShadowEffect
+)
+from PySide6.QtGui import QColor, QCursor, QMouseEvent
+try:
+    from .color_picker_flyout import ColorPickerFlyout
+    from ..styles import is_dark_color
+except ImportError:
+    from components.color_picker_flyout import ColorPickerFlyout
+    from styles import is_dark_color
+
+class NoteCard(QFrame):
+    """
+    A sticky note card widget displaying title, markdown excerpt, and timestamp.
+    """
+    double_clicked = Signal(str)       # Emits note_id
+    color_changed = Signal(str, str)   # Emits (note_id, new_color_hex)
+    delete_requested = Signal(str)    # Emits note_id
+
+    def __init__(self, note: dict, parent=None):
+        super().__init__(parent)
+        self.note = note
+        self.note_id = note["id"]
+        self.color_hex = note.get("color_hex", "#FFF9C4")
+        
+        self.setFixedSize(220, 200)
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setObjectName("NoteCardFrame")
+
+        # Soft shadow
+        self.shadow = QGraphicsDropShadowEffect(self)
+        self.shadow.setBlurRadius(12)
+        self.shadow.setColor(QColor(0, 0, 0, 30))
+        self.shadow.setOffset(0, 3)
+        self.setGraphicsEffect(self.shadow)
+
+        # Layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 14)
+        layout.setSpacing(8)
+
+        # Note Title
+        self.title_label = QLabel(self.note.get("title") or "Untitled", self)
+        self.title_label.setObjectName("CardTitle")
+        self.title_label.setWordWrap(True)
+        self.title_label.setMaximumHeight(44)
+        layout.addWidget(self.title_label)
+
+        # Note Preview / Excerpt
+        self.snippet_label = QLabel(self._clean_excerpt(self.note.get("content", "")), self)
+        self.snippet_label.setObjectName("CardSnippet")
+        self.snippet_label.setWordWrap(True)
+        self.snippet_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.snippet_label, 1)
+
+        # Bottom row (timestamp + right click hint)
+        bottom_row = QHBoxLayout()
+        bottom_row.setContentsMargins(0, 0, 0, 0)
+
+        date_str = self._format_date(self.note.get("updated_at", ""))
+        self.date_label = QLabel(date_str, self)
+        self.date_label.setObjectName("CardDate")
+        bottom_row.addWidget(self.date_label)
+
+        bottom_row.addStretch()
+        
+        hint_label = QLabel("🎨", self)
+        hint_label.setToolTip("Right-click for colors")
+        hint_label.setStyleSheet("opacity: 0.6; font-size: 11px;")
+        bottom_row.addWidget(hint_label)
+
+        layout.addLayout(bottom_row)
+
+        self._apply_style()
+
+    def update_color(self, new_hex: str):
+        self.color_hex = new_hex
+        self._apply_style()
+
+    def _apply_style(self):
+        dark_mode = is_dark_color(self.color_hex)
+        text_color = "#FFFFFF" if dark_mode else "#1F2937"
+        subtext_color = "#D1D5DB" if dark_mode else "#4B5563"
+        muted_color = "#9CA3AF" if dark_mode else "#6B7280"
+        border_color = "rgba(255, 255, 255, 0.15)" if dark_mode else "rgba(0, 0, 0, 0.08)"
+
+        self.setStyleSheet(f"""
+            QFrame#NoteCardFrame {{
+                background-color: {self.color_hex};
+                border: 1px solid {border_color};
+                border-radius: 12px;
+            }}
+            QFrame#NoteCardFrame:hover {{
+                border: 1.5px solid rgba(0, 103, 192, 0.6);
+            }}
+            QLabel#CardTitle {{
+                color: {text_color};
+                font-weight: 700;
+                font-size: 14px;
+                background: transparent;
+            }}
+            QLabel#CardSnippet {{
+                color: {subtext_color};
+                font-size: 12px;
+                line-height: 1.4;
+                background: transparent;
+            }}
+            QLabel#CardDate {{
+                color: {muted_color};
+                font-size: 10px;
+                font-weight: 500;
+                background: transparent;
+            }}
+        """)
+
+    def _clean_excerpt(self, markdown_text: str) -> str:
+        """Strip markdown syntax to create a clean excerpt."""
+        if not markdown_text:
+            return "Empty note"
+        # Remove headers, bullets, code fences
+        text = re.sub(r'#+\s*', '', markdown_text)
+        text = re.sub(r'[*_`~]', '', text)
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        clean = " ".join(lines)
+        return clean[:90] + ("..." if len(clean) > 90 else "")
+
+    def _format_date(self, iso_date: str) -> str:
+        try:
+            dt = datetime.fromisoformat(iso_date)
+            return dt.strftime("%b %d, %I:%M %p")
+        except Exception:
+            return "Recently"
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.double_clicked.emit(self.note_id)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.RightButton:
+            self._show_color_flyout(event.globalPosition().toPoint())
+        super().mousePressEvent(event)
+
+    def _show_color_flyout(self, global_pos):
+        flyout = ColorPickerFlyout(self)
+        flyout.color_selected.connect(self._on_flyout_color_selected)
+        flyout.delete_requested.connect(lambda: self.delete_requested.emit(self.note_id))
+        flyout.move(global_pos.x() - 20, global_pos.y() - 20)
+        flyout.show()
+
+    def _on_flyout_color_selected(self, hex_val: str):
+        self.update_color(hex_val)
+        self.color_changed.emit(self.note_id, hex_val)
