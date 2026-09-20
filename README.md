@@ -1,10 +1,29 @@
-# Sticky Notes - Minimal Markdown Desktop App
+# Danielle's Sticky Notes - Personal Desktop Edition
 
-A minimal, single-window Windows desktop application built with **Python** and **PySide6 (Qt6)** featuring a **Windows 11 Fluent / WinUI 3** aesthetic.
+A minimal, single-window Windows desktop application built with **Python** and **PySide6 (Qt6)** featuring a **Windows 11 Fluent / WinUI 3** aesthetic, 3D note stacks, tag side panel, and bilingual English/Spanish support.
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows-0078D6.svg)
-![Framework](https://img.shields.io/badge/GUI-PySide6-41CD52.svg)
+<p align="left">
+  <a href="https://github.com/DavidAlexanderM/sticky_notes_releases/releases/latest">
+    <img src="https://img.shields.io/github/v/release/DavidAlexanderM/sticky_notes_releases?style=for-the-badge&color=2563EB&logo=github&label=Release" alt="Latest Release" />
+  </a>
+  <a href="https://github.com/DavidAlexanderM/sticky_notes_releases/releases/latest">
+    <img src="https://img.shields.io/github/downloads/DavidAlexanderM/sticky_notes_releases/total?style=for-the-badge&color=10B981&logo=windows&label=Total%20Downloads" alt="Total Downloads" />
+  </a>
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform Windows" />
+</p>
+
+---
+
+## ⚡ Direct Download (Latest Version)
+
+No need to search through release tabs or build from source — download and run immediately on any Windows PC:
+
+| Package | Recommended For | 1-Click Direct Download |
+| :--- | :--- | :--- |
+| 🚀 **Windows Installer** | Standard installation with desktop shortcut, start menu entry, and uninstaller. | [**⬇️ Download Installer (.exe)**](https://github.com/DavidAlexanderM/sticky_notes_releases/releases/latest) |
+| 📦 **Portable Package** | Zero installation needed. Extract anywhere (e.g. USB or Documents) and double-click `StickyNotes.exe`. | [**📦 Download Portable (.zip)**](https://github.com/DavidAlexanderM/sticky_notes_releases/releases/latest) |
+
+> 💡 **Tip:** Full release notes, asset hashes, and previous versions are always available on the [**Official Releases Page**](https://github.com/DavidAlexanderM/sticky_notes_releases/releases/latest).
 
 ---
 
