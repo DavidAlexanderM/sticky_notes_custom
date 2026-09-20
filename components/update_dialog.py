@@ -1,0 +1,459 @@
+"""
+update_dialog.py - Comprehensive In-App Software Update Center for Sticky Notes.
+Features live GitHub API querying, private repository token authentication,
+markdown changelog preview, chunked download progress, and Windows self-restart.
+"""
+
+from pathlib import Path
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+    QPushButton, QWidget, QFrame, QProgressBar,
+    QScrollArea, QLineEdit, QMessageBox, QTextBrowser
+)
+from PySide6.QtGui import QDesktopServices, QCursor, QFont
+
+try:
+    from ..version import __version__, HOMEPAGE
+    from ..theme_manager import get_theme_manager
+    from ..styles import THEME_PALETTES, get_markdown_preview_css
+    from ..icons import get_themed_icon
+    from ..updater import (
+        UpdateCheckWorker, UpdateDownloadWorker, apply_update_and_restart,
+        get_stored_github_token, save_stored_github_token
+    )
+except ImportError:
+    from version import __version__, HOMEPAGE
+    from theme_manager import get_theme_manager
+    from styles import THEME_PALETTES, get_markdown_preview_css
+    from icons import get_themed_icon
+    from updater import (
+        UpdateCheckWorker, UpdateDownloadWorker, apply_update_and_restart,
+        get_stored_github_token, save_stored_github_token
+    )
+
+
+class UpdateDialog(QDialog):
+    """
+    Modal software updater dialog supporting both public and private GitHub repositories.
+    """
+    def __init__(self, parent=None, auto_check: bool = True):
+        super().__init__(parent)
+        self.setWindowTitle(f"Sticky Notes - Check for Updates")
+        self.resize(540, 500)
+        self.setMinimumSize(460, 420)
+
+        self.theme_mgr = get_theme_manager()
+        self.theme = self.theme_mgr.current_theme
+        self.pal = THEME_PALETTES.get(self.theme, THEME_PALETTES["light"])
+
+        self.check_worker = None
+        self.download_worker = None
+        self.release_info = None
+        self.downloaded_zip_path = None
+
+        self._build_ui()
+
+        if auto_check:
+            self._start_check()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        # Header with Version Info
+        header_frame = QFrame(self)
+        header_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {self.pal['bg_main']};
+                border: 1px solid {self.pal['border']};
+                border-radius: 10px;
+                padding: 12px 16px;
+            }}
+        """)
+        h_layout = QHBoxLayout(header_frame)
+        h_layout.setContentsMargins(0, 0, 0, 0)
+        
+        info_col = QVBoxLayout()
+        info_col.setSpacing(2)
+        title_lbl = QLabel("Sticky Notes Update Center", header_frame)
+        title_lbl.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']}; background: transparent;")
+        info_col.addWidget(title_lbl)
+
+        ver_lbl = QLabel(f"Installed Version: <b>v{__version__}</b>", header_frame)
+        ver_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']}; background: transparent;")
+        info_col.addWidget(ver_lbl)
+
+        h_layout.addLayout(info_col)
+        h_layout.addStretch()
+
+        self.status_icon_lbl = QLabel(header_frame)
+        self.status_icon_lbl.setPixmap(get_themed_icon("clock", role="primary", theme=self.theme, size=28).pixmap(28, 28))
+        self.status_icon_lbl.setStyleSheet("background: transparent;")
+        h_layout.addWidget(self.status_icon_lbl)
+
+        layout.addWidget(header_frame)
+
+        # Central Dynamic Card
+        self.card = QFrame(self)
+        self.card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {self.pal['bg_surface']};
+                border: 1px solid {self.pal['border']};
+                border-radius: 10px;
+                padding: 14px;
+            }}
+        """)
+        self.card_layout = QVBoxLayout(self.card)
+        self.card_layout.setContentsMargins(8, 8, 8, 8)
+        self.card_layout.setSpacing(10)
+        layout.addWidget(self.card, 1)
+
+        # Bottom row
+        bottom_row = QHBoxLayout()
+        
+        self.token_settings_btn = QPushButton("🔑 GitHub Token...", self)
+        self.token_settings_btn.setObjectName("SelectModeButton")
+        self.token_settings_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.token_settings_btn.clicked.connect(self._show_token_section)
+        bottom_row.addWidget(self.token_settings_btn)
+
+        bottom_row.addStretch()
+
+        self.close_btn = QPushButton("Close", self)
+        self.close_btn.setObjectName("SelectModeButton")
+        self.close_btn.setFixedSize(90, 32)
+        self.close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.close_btn.clicked.connect(self.reject)
+        bottom_row.addWidget(self.close_btn)
+
+        layout.addLayout(bottom_row)
+
+        self._show_checking_state()
+
+    def _clear_card(self):
+        while self.card_layout.count():
+            item = self.card_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+    # --- View States ---
+
+    def _show_checking_state(self):
+        self._clear_card()
+        lbl = QLabel("🔍 Checking GitHub for updates...", self.card)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {self.pal['text_primary']}; margin-top: 40px;")
+        self.card_layout.addWidget(lbl)
+        self.card_layout.addStretch()
+
+    def _show_up_to_date(self):
+        self._clear_card()
+        icon_lbl = QLabel(self.card)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_lbl.setPixmap(get_themed_icon("check", role="accent", theme=self.theme, size=36).pixmap(36, 36))
+        self.card_layout.addWidget(icon_lbl)
+
+        title = QLabel("You're on the latest version!", self.card)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
+        self.card_layout.addWidget(title)
+
+        desc = QLabel(f"Sticky Notes v{__version__} is currently up to date.", self.card)
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']};")
+        self.card_layout.addWidget(desc)
+
+        self.card_layout.addStretch()
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        check_again_btn = QPushButton(" Check Again", self.card)
+        check_again_btn.setIcon(get_themed_icon("clock", role="btn_text", theme=self.theme, size=15))
+        check_again_btn.setObjectName("SelectModeButton")
+        check_again_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        check_again_btn.clicked.connect(self._start_check)
+        btn_row.addWidget(check_again_btn)
+        btn_row.addStretch()
+        self.card_layout.addLayout(btn_row)
+
+    def _show_update_available(self, release_info: dict):
+        self._clear_card()
+        self.release_info = release_info
+
+        # Top banner
+        top_row = QHBoxLayout()
+        badge = QLabel(f" v{release_info['version']} Available! ", self.card)
+        badge.setStyleSheet(f"""
+            background-color: {self.pal['accent']};
+            color: {self.pal['accent_text']};
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 12px;
+            padding: 4px 8px;
+        """)
+        top_row.addWidget(badge)
+
+        date_str = release_info.get("published_at", "")[:10]
+        if date_str:
+            date_lbl = QLabel(f"Released: {date_str}", self.card)
+            date_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']};")
+            top_row.addWidget(date_lbl)
+
+        top_row.addStretch()
+        self.card_layout.addLayout(top_row)
+
+        # Release Notes Browser
+        notes_browser = QTextBrowser(self.card)
+        notes_browser.setOpenExternalLinks(True)
+        css = get_markdown_preview_css(self.theme)
+        
+        try:
+            import markdown2
+            body_html = markdown2.markdown(release_info.get("body", "No release notes provided."))
+        except Exception:
+            body_html = f"<pre>{release_info.get('body', '')}</pre>"
+
+        notes_browser.setHtml(f"<html><head>{css}</head><body>{body_html}</body></html>")
+        notes_browser.setStyleSheet(f"border: 1px solid {self.pal['border']}; border-radius: 8px; background: {self.pal['bg_main']};")
+        self.card_layout.addWidget(notes_browser, 1)
+
+        # Action row
+        action_row = QHBoxLayout()
+        
+        gh_btn = QPushButton(" View on GitHub", self.card)
+        gh_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=self.theme, size=15))
+        gh_btn.setObjectName("SelectModeButton")
+        gh_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        gh_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(release_info.get("html_url", HOMEPAGE))))
+        action_row.addWidget(gh_btn)
+
+        action_row.addStretch()
+
+        download_btn = QPushButton("⬇ Download & Install Update", self.card)
+        download_btn.setObjectName("NewNoteButton")
+        download_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        download_btn.clicked.connect(self._start_download)
+        action_row.addWidget(download_btn)
+
+        self.card_layout.addLayout(action_row)
+
+    def _show_downloading_state(self):
+        self._clear_card()
+        
+        title = QLabel(f"Downloading Sticky Notes v{self.release_info.get('version')}...", self.card)
+        title.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {self.pal['text_primary']};")
+        self.card_layout.addWidget(title)
+
+        self.progress_bar = QProgressBar(self.card)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                border: 1px solid {self.pal['border']};
+                border-radius: 6px;
+                text-align: center;
+                height: 22px;
+                color: {self.pal['text_primary']};
+                background: {self.pal['bg_main']};
+            }}
+            QProgressBar::chunk {{
+                background-color: {self.pal['accent']};
+                border-radius: 5px;
+            }}
+        """)
+        self.card_layout.addWidget(self.progress_bar)
+
+        self.download_meta_lbl = QLabel("Connecting...", self.card)
+        self.download_meta_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']};")
+        self.card_layout.addWidget(self.download_meta_lbl)
+
+        self.card_layout.addStretch()
+
+        cancel_row = QHBoxLayout()
+        cancel_row.addStretch()
+        cancel_btn = QPushButton("Cancel Download", self.card)
+        cancel_btn.setObjectName("SelectModeButton")
+        cancel_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        cancel_btn.clicked.connect(self._cancel_download)
+        cancel_row.addWidget(cancel_btn)
+        self.card_layout.addLayout(cancel_row)
+
+    def _show_install_ready(self, zip_path: str):
+        self._clear_card()
+        self.downloaded_zip_path = zip_path
+
+        icon_lbl = QLabel(self.card)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_lbl.setPixmap(get_themed_icon("check", role="accent", theme=self.theme, size=36).pixmap(36, 36))
+        self.card_layout.addWidget(icon_lbl)
+
+        title = QLabel("Update Downloaded & Ready!", self.card)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
+        self.card_layout.addWidget(title)
+
+        msg = QLabel("Sticky Notes will restart to replace the application files with the new version.", self.card)
+        msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        msg.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']};")
+        msg.setWordWrap(True)
+        self.card_layout.addWidget(msg)
+
+        self.card_layout.addStretch()
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        restart_btn = QPushButton("🚀 Restart & Apply Update Now", self.card)
+        restart_btn.setObjectName("NewNoteButton")
+        restart_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        restart_btn.clicked.connect(self._apply_update)
+        btn_row.addWidget(restart_btn)
+        btn_row.addStretch()
+        self.card_layout.addLayout(btn_row)
+
+    def _show_error_or_auth(self, error_msg: str, is_auth: bool):
+        self._clear_card()
+
+        title = QLabel("🔒 GitHub Authentication Required" if is_auth else "⚠️ Update Check Error", self.card)
+        title.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {'#E57373' if not is_auth else self.pal['accent']};")
+        self.card_layout.addWidget(title)
+
+        desc = QLabel(error_msg, self.card)
+        desc.setStyleSheet(f"font-size: 12px; color: {self.pal['text_primary']};")
+        desc.setWordWrap(True)
+        self.card_layout.addWidget(desc)
+
+        if is_auth:
+            self._append_token_form()
+        else:
+            self.card_layout.addStretch()
+            retry_btn = QPushButton("Retry Check", self.card)
+            retry_btn.setObjectName("SelectModeButton")
+            retry_btn.clicked.connect(self._start_check)
+            self.card_layout.addWidget(retry_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+    def _append_token_form(self):
+        info = QLabel("Because your repository is private, GitHub requires a Personal Access Token (PAT) with <code>read:packages</code> or fine-grained <code>Contents: Read-only</code> permission.", self.card)
+        info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
+        info.setWordWrap(True)
+        self.card_layout.addWidget(info)
+
+        self.token_input = QLineEdit(self.card)
+        self.token_input.setPlaceholderText("Paste GitHub Personal Access Token (ghp_... or github_pat_...)")
+        self.token_input.setEchoMode(QLineEdit.EchoMode.Password)
+        existing = get_stored_github_token()
+        if existing:
+            self.token_input.setText(existing)
+        self.token_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {self.pal['input_bg']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['input_border']};
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-family: monospace;
+            }}
+        """)
+        self.card_layout.addWidget(self.token_input)
+
+        row = QHBoxLayout()
+        link_btn = QPushButton("🌐 Generate Token on GitHub", self.card)
+        link_btn.setObjectName("SelectModeButton")
+        link_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        link_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/settings/tokens?type=beta")))
+        row.addWidget(link_btn)
+
+        row.addStretch()
+
+        save_btn = QPushButton("Save Token & Check", self.card)
+        save_btn.setObjectName("NewNoteButton")
+        save_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        save_btn.clicked.connect(self._save_token_and_check)
+        row.addWidget(save_btn)
+
+        self.card_layout.addLayout(row)
+        self.card_layout.addStretch()
+
+    def _show_token_section(self):
+        self._clear_card()
+        title = QLabel("🔑 GitHub Access Token Configuration", self.card)
+        title.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {self.pal['text_primary']};")
+        self.card_layout.addWidget(title)
+        self._append_token_form()
+
+    # --- Actions ---
+
+    def _start_check(self):
+        self._show_checking_state()
+        token = get_stored_github_token()
+        self.check_worker = UpdateCheckWorker(token=token, parent=self)
+        self.check_worker.check_finished.connect(self._on_check_finished)
+        self.check_worker.check_failed.connect(self._on_check_failed)
+        self.check_worker.start()
+
+    def _on_check_finished(self, has_update: bool, release_info: dict):
+        if has_update:
+            self._show_update_available(release_info)
+        else:
+            self._show_up_to_date()
+
+    def _on_check_failed(self, error_msg: str, is_auth: bool):
+        self._show_error_or_auth(error_msg, is_auth)
+
+    def _save_token_and_check(self):
+        token = self.token_input.text().strip()
+        if token:
+            save_stored_github_token(token)
+            QMessageBox.information(self, "Saved", "GitHub token saved securely.")
+        self._start_check()
+
+    def _start_download(self):
+        if not self.release_info:
+            return
+        self._show_downloading_state()
+        token = get_stored_github_token()
+        self.download_worker = UpdateDownloadWorker(self.release_info, token=token, parent=self)
+        self.download_worker.progress.connect(self._on_download_progress)
+        self.download_worker.download_finished.connect(self._on_download_finished)
+        self.download_worker.download_failed.connect(self._on_download_failed)
+        self.download_worker.start()
+
+    def _on_download_progress(self, downloaded: int, total: int, percent: float):
+        if hasattr(self, 'progress_bar'):
+            self.progress_bar.setValue(int(percent))
+        if hasattr(self, 'download_meta_lbl'):
+            dl_mb = downloaded / (1024 * 1024)
+            tot_mb = total / (1024 * 1024)
+            self.download_meta_lbl.setText(f"{dl_mb:.1f} MB / {tot_mb:.1f} MB ({percent:.0f}%)")
+
+    def _cancel_download(self):
+        if self.download_worker and self.download_worker.isRunning():
+            self.download_worker.cancel()
+        self._show_update_available(self.release_info)
+
+    def _on_download_finished(self, zip_path: str):
+        self._show_install_ready(zip_path)
+
+    def _on_download_failed(self, err_msg: str):
+        QMessageBox.warning(self, "Download Error", err_msg)
+        if self.release_info:
+            self._show_update_available(self.release_info)
+        else:
+            self._show_up_to_date()
+
+    def _apply_update(self):
+        if not self.downloaded_zip_path:
+            return
+        # Test if frozen or source
+        import sys
+        if getattr(sys, 'frozen', False):
+            apply_update_and_restart(self.downloaded_zip_path)
+        else:
+            QMessageBox.information(
+                self,
+                "Development Mode",
+                f"Update package successfully downloaded to:\n{self.downloaded_zip_path}\n\nIn development mode, please run git pull or extract the ZIP."
+            )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self.downloaded_zip_path).parent)))

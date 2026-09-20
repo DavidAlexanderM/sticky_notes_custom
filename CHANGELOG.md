@@ -17,6 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.5] - 2026-09-20
+
+### Added & Improved
+- **Integrated In-App Auto-Updater (`updater.py` & `UpdateDialog`):**
+  - Seamless background update checker querying GitHub Releases API with support for both public and **private repositories** (using Personal Access Tokens / fine-grained tokens).
+  - Modal Software Update Center (`components/update_dialog.py`) displaying current version, latest release version, release date, and full markdown changelog preview.
+  - One-click chunked downloading with live progress bar and downloaded MB counter.
+  - Seamless Windows self-update replacement (`apply_update.bat`) that swaps application files and relaunches automatically.
+  - **Check for Updates** button added directly to Tab 3 (*About & Storage*) of the Help & About dialog.
+  - Non-intrusive delayed background update check (3.5s after launch) that adds a subtle `✨ vX.Y.Z Available` notification pill to the app header when updates are detected.
+
+---
+
 ## [1.5.4] - 2026-09-20
 
 ### Added & Improved

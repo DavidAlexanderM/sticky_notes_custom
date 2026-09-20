@@ -67,6 +67,23 @@ class MainWindow(QMainWindow):
         # Load notes on launch
         self.grid_view.load_notes()
 
+        # Check for software updates silently in background 3.5 seconds after launch
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(3500, self._check_updates_silent)
+
+    def _check_updates_silent(self):
+        try:
+            from updater import UpdateCheckWorker
+            self._bg_update_worker = UpdateCheckWorker(parent=self)
+            self._bg_update_worker.check_finished.connect(self._on_bg_update_detected)
+            self._bg_update_worker.start()
+        except Exception:
+            pass
+
+    def _on_bg_update_detected(self, has_update: bool, release_info: dict):
+        if has_update and hasattr(self, 'grid_view') and hasattr(self.grid_view, 'show_update_available_banner'):
+            self.grid_view.show_update_available_banner(release_info)
+
     def _open_note_editor(self, note_id: str):
         """Swaps view to editor for the selected note."""
         self.editor_view.load_note(note_id)

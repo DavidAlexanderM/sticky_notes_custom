@@ -58,14 +58,14 @@ class StickyNotesGridView(QWidget):
         self.main_layout.setSpacing(14)
 
         # Header Bar
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(10)
+        self.header_layout = QHBoxLayout()
+        self.header_layout.setSpacing(10)
 
         self.title_label = QLabel("My Notes", self)
         self.title_label.setObjectName("AppHeaderTitle")
-        header_layout.addWidget(self.title_label)
+        self.header_layout.addWidget(self.title_label)
 
-        header_layout.addStretch()
+        self.header_layout.addStretch()
 
         # Help & Keyboard Shortcuts Button (❓)
         self.help_btn = QPushButton(self)
@@ -74,7 +74,7 @@ class StickyNotesGridView(QWidget):
         self.help_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.help_btn.setToolTip("Help & Keyboard Shortcuts (F1)")
         self.help_btn.clicked.connect(self._open_help_dialog)
-        header_layout.addWidget(self.help_btn)
+        self.header_layout.addWidget(self.help_btn)
 
         # Theme Switcher Button (Icon-Only, System/Dark/Light)
         self.theme_btn = QPushButton(self)
@@ -84,16 +84,16 @@ class StickyNotesGridView(QWidget):
         self.theme_btn.clicked.connect(self._toggle_theme)
         self.theme_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.theme_btn.customContextMenuRequested.connect(self._show_theme_context_menu)
-        header_layout.addWidget(self.theme_btn)
+        self.header_layout.addWidget(self.theme_btn)
 
         # "+ New Note" Button
         self.new_note_btn = QPushButton(" New Note", self)
         self.new_note_btn.setObjectName("NewNoteButton")
         self.new_note_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.new_note_btn.clicked.connect(self._create_new_note)
-        header_layout.addWidget(self.new_note_btn)
+        self.header_layout.addWidget(self.new_note_btn)
 
-        self.main_layout.addLayout(header_layout)
+        self.main_layout.addLayout(self.header_layout)
 
         # Search Bar & Color Filter Bar
         search_filter_layout = QVBoxLayout()
@@ -190,6 +190,44 @@ class StickyNotesGridView(QWidget):
     def _open_help_dialog(self):
         """Displays the Help, Shortcuts, and About Dialog."""
         dialog = HelpAboutDialog(self)
+        dialog.exec()
+
+    def show_update_available_banner(self, release_info: dict):
+        """Displays a non-intrusive update pill button in the top header."""
+        self._latest_release_info = release_info
+        ver = release_info.get("version", "")
+        self.help_btn.setToolTip(f"Help & About (F1) • Update v{ver} Available!")
+
+        if not hasattr(self, 'update_alert_btn') or self.update_alert_btn is None:
+            self.update_alert_btn = QPushButton(f"✨ v{ver} Available", self)
+            self.update_alert_btn.setObjectName("NewNoteButton")
+            self.update_alert_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.update_alert_btn.setToolTip(f"A new version of Sticky Notes (v{ver}) is available. Click to view & install.")
+            self.update_alert_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #8AB4F8;
+                    color: #041E49;
+                    font-size: 11px;
+                    font-weight: 700;
+                    border-radius: 6px;
+                    padding: 5px 10px;
+                }
+                QPushButton:hover { background-color: #A8C7FA; }
+            """)
+            self.update_alert_btn.clicked.connect(self._open_update_from_banner)
+            idx = self.header_layout.indexOf(self.help_btn)
+            self.header_layout.insertWidget(max(0, idx), self.update_alert_btn)
+
+    def _open_update_from_banner(self):
+        try:
+            from components.update_dialog import UpdateDialog
+        except ImportError:
+            from ..components.update_dialog import UpdateDialog
+        dialog = UpdateDialog(self, auto_check=False)
+        if hasattr(self, '_latest_release_info') and self._latest_release_info:
+            dialog._show_update_available(self._latest_release_info)
+        else:
+            dialog._start_check()
         dialog.exec()
 
     def _update_theme_btn_label(self):

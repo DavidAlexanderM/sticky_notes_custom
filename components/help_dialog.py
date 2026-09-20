@@ -20,6 +20,7 @@ try:
     from ..database import get_db_path
     from ..media_manager import get_attachments_dir
     from ..version import __version__, AUTHOR, LICENSE, HOMEPAGE
+    from .update_dialog import UpdateDialog
 except ImportError:
     from theme_manager import get_theme_manager
     from styles import THEME_PALETTES
@@ -27,6 +28,7 @@ except ImportError:
     from database import get_db_path
     from media_manager import get_attachments_dir
     from version import __version__, AUTHOR, LICENSE, HOMEPAGE
+    from components.update_dialog import UpdateDialog
 
 
 class HelpAboutDialog(QDialog):
@@ -289,11 +291,23 @@ class HelpAboutDialog(QDialog):
         github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(HOMEPAGE)))
         btn_layout.addWidget(github_btn)
 
+        update_btn = QPushButton(" Check for Updates...", self)
+        update_btn.setIcon(get_themed_icon("clock", role="btn_text", theme=theme, size=16))
+        update_btn.setObjectName("SelectModeButton")
+        update_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        update_btn.clicked.connect(self._open_update_dialog)
+        btn_layout.addWidget(update_btn)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
         layout.addStretch()
         return container
+
+    def _open_update_dialog(self):
+        """Displays the Software Update Center."""
+        dialog = UpdateDialog(self, auto_check=True)
+        dialog.exec()
 
     def _update_tab_icons(self):
         theme = self.theme_mgr.current_theme
