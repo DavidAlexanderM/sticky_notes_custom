@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sticky-notes-db": {
+      "command": "python",
+      "args": ["scripts/db_cli.py", "stats"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
