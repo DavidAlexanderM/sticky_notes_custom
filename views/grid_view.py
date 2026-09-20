@@ -1,21 +1,30 @@
+"""
+grid_view.py - Main Sticky Notes Grid / Board View.
+Features responsive multi-column note layout, color filter chips, live search,
+Shift/Ctrl multi-selection, keyboard navigation, and Help & About center.
+"""
+
+from typing import Optional, List, Set
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QLineEdit, QPushButton, QScrollArea, QGridLayout, QFrame,
-    QMessageBox, QFileDialog, QMenu, QApplication
+    QLineEdit, QPushButton, QScrollArea, QGridLayout, 
+    QFrame, QMessageBox, QFileDialog, QApplication, QMenu
 )
-from PySide6.QtGui import QCursor, QAction
+from PySide6.QtGui import QCursor, QKeyEvent
 import markdown2
 
 try:
     from ..components.note_card import NoteCard
-    from ..styles import MARKDOWN_PREVIEW_CSS, NOTE_COLORS
+    from ..components.help_dialog import HelpAboutDialog
+    from ..styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from ..theme_manager import get_theme_manager
     from ..icons import get_themed_icon
     from .. import database
 except ImportError:
     from components.note_card import NoteCard
-    from styles import MARKDOWN_PREVIEW_CSS, NOTE_COLORS
+    from components.help_dialog import HelpAboutDialog
+    from styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from theme_manager import get_theme_manager
     from icons import get_themed_icon
     import database
@@ -23,20 +32,23 @@ except ImportError:
 
 class StickyNotesGridView(QWidget):
     """
-    Main board displaying notes with real-time search filtering,
-    color category chips, theme switching, and multi-selection management.
+    Main board displaying sticky notes in a responsive, filterable grid
+    with Shift/Ctrl multi-selection and complete keyboard navigation.
     """
-    open_note_requested = Signal(str)  # Emits note_id to switch to editor
+    open_note_requested = Signal(str)  # Emits note_id when user opens a note
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("GridViewContainer")
-        self.note_cards = []
-        self.all_notes = []
-        self.is_selection_mode = False
-        self.selected_note_ids = set()
-        self.current_color_filter = None  # None means 'All'
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
         self.theme_mgr = get_theme_manager()
+        self.all_notes: List[dict] = []
+        self.note_cards: List[NoteCard] = []
+        self.selected_note_ids: Set[str] = set()
+        self.current_color_filter: Optional[str] = None
+        self.anchor_card_index: int = -1
+        self.focused_card_index: int = -1
 
         # Main Layout
         self.main_layout = QVBoxLayout(self)
@@ -45,36 +57,30 @@ class StickyNotesGridView(QWidget):
 
         # Header Bar
         header_layout = QHBoxLayout()
-        header_layout.setSpacing(12)
+        header_layout.setSpacing(10)
 
-        title_col = QVBoxLayout()
-        title_col.setSpacing(2)
-        
         self.title_label = QLabel("My Notes", self)
         self.title_label.setObjectName("AppHeaderTitle")
-        title_col.addWidget(self.title_label)
+        header_layout.addWidget(self.title_label)
 
-        self.subtitle_label = QLabel("Double-click to edit • Right-click for options", self)
-        self.subtitle_label.setObjectName("AppHeaderSubtitle")
-        title_col.addWidget(self.subtitle_label)
-
-        header_layout.addLayout(title_col)
         header_layout.addStretch()
 
-        # Theme Switcher Button (Sun / Moon)
+        # Help & Keyboard Shortcuts Button (❓)
+        self.help_btn = QPushButton(self)
+        self.help_btn.setObjectName("EditorHeaderBtn")
+        self.help_btn.setFixedSize(36, 36)
+        self.help_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.help_btn.setToolTip("Help & Keyboard Shortcuts (F1)")
+        self.help_btn.clicked.connect(self._open_help_dialog)
+        header_layout.addWidget(self.help_btn)
+
+        # Theme Switcher Button (Icon-Only, System/Dark/Light)
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("ThemeToggleBtn")
+        self.theme_btn.setFixedSize(36, 36)
         self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.theme_btn.setToolTip("Toggle Light / Dark Theme")
         self.theme_btn.clicked.connect(self._toggle_theme)
         header_layout.addWidget(self.theme_btn)
-
-        # "Select" Mode Toggle Button
-        self.select_mode_btn = QPushButton(" Select", self)
-        self.select_mode_btn.setObjectName("SelectModeButton")
-        self.select_mode_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.select_mode_btn.clicked.connect(self._toggle_selection_mode)
-        header_layout.addWidget(self.select_mode_btn)
 
         # "+ New Note" Button
         self.new_note_btn = QPushButton(" New Note", self)
@@ -89,10 +95,10 @@ class StickyNotesGridView(QWidget):
         search_filter_layout = QVBoxLayout()
         search_filter_layout.setSpacing(8)
 
-        # Real-time search input with embedded vector search icon
+        # Real-time search input
         self.search_input = QLineEdit(self)
         self.search_input.setObjectName("SearchInput")
-        self.search_input.setPlaceholderText("Search notes by title, tag, or content...")
+        self.search_input.setPlaceholderText("Search notes by title, tag, or content... (Ctrl+F)")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self._on_search_changed)
         search_filter_layout.addWidget(self.search_input)
@@ -140,13 +146,13 @@ class StickyNotesGridView(QWidget):
         self.scroll_area.setWidget(self.grid_content)
         self.main_layout.addWidget(self.scroll_area, 1)
 
-        # Bottom Selection Action Bar (hidden by default)
+        # Bottom Selection Action Bar (Appears automatically when notes are selected)
         self.action_bar = QFrame(self)
         self.action_bar.setObjectName("SelectionActionBar")
         self.action_bar.setVisible(False)
         action_layout = QHBoxLayout(self.action_bar)
         action_layout.setContentsMargins(14, 8, 14, 8)
-        action_layout.setSpacing(16)
+        action_layout.setSpacing(12)
 
         self.selection_count_label = QLabel("0 notes selected", self.action_bar)
         self.selection_count_label.setObjectName("SelectionCountLabel")
@@ -166,28 +172,43 @@ class StickyNotesGridView(QWidget):
         self.delete_selected_btn.clicked.connect(self._delete_selected_notes)
         action_layout.addWidget(self.delete_selected_btn)
 
+        self.clear_selection_btn = QPushButton(" Clear", self.action_bar)
+        self.clear_selection_btn.setObjectName("SelectModeButton")
+        self.clear_selection_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.clear_selection_btn.clicked.connect(self._clear_selection)
+        action_layout.addWidget(self.clear_selection_btn)
+
         self.main_layout.addWidget(self.action_bar)
 
         self._update_theme_btn_label()
-        # Listen to theme change signals
         self.theme_mgr.theme_changed.connect(self._on_theme_changed)
 
+    def _open_help_dialog(self):
+        """Displays the Help, Shortcuts, and About Dialog."""
+        dialog = HelpAboutDialog(self)
+        dialog.exec()
+
     def _update_theme_btn_label(self):
-        """Updates icons across the header and action buttons based on current theme."""
+        """Updates icons across the header and action buttons based on current theme (Icon-only theme switcher)."""
         theme = self.theme_mgr.current_theme
         is_dark = self.theme_mgr.is_dark_mode()
-        self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=16))
-        self.theme_btn.setText(" Light" if is_dark else " Dark")
-        self.select_mode_btn.setIcon(get_themed_icon("check_square", role="btn_text", theme=theme, size=15))
-        self.new_note_btn.setIcon(get_themed_icon("plus", role="white", theme=theme, size=16))
+        
+        # Icon-only theme button
+        self.theme_btn.setText("")
+        self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=18))
+        self.theme_btn.setToolTip(f"Theme: {'Dark' if is_dark else 'Light'} (Click to switch)")
 
-        # Action bar buttons
+        # Help button
+        self.help_btn.setIcon(get_themed_icon("help_circle", role="btn_text", theme=theme, size=18))
+
+        # Action buttons
+        self.new_note_btn.setIcon(get_themed_icon("plus", role="white", theme=theme, size=16))
         self.select_all_btn.setIcon(get_themed_icon("check", role="btn_text", theme=theme, size=15))
         self.delete_selected_btn.setIcon(get_themed_icon("trash", role="white", theme=theme, size=15))
+        self.clear_selection_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=14))
 
     def _toggle_theme(self):
-        new_theme = self.theme_mgr.toggle_theme()
-        # Apply globally to application
+        self.theme_mgr.toggle_theme()
         app = QApplication.instance()
         if app:
             app.setStyleSheet(self.theme_mgr.get_app_stylesheet())
@@ -216,7 +237,6 @@ class StickyNotesGridView(QWidget):
 
     def _filter_and_render_notes(self):
         """Filters notes based on search query and color chip, then renders grid."""
-        # Clear grid
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
             widget = item.widget()
@@ -224,16 +244,16 @@ class StickyNotesGridView(QWidget):
                 widget.deleteLater()
         self.note_cards.clear()
         self.selected_note_ids.clear()
+        self.anchor_card_index = -1
+        self.focused_card_index = -1
         self._update_selection_ui()
 
         search_query = self.search_input.text().strip().lower()
 
         filtered = []
         for note in self.all_notes:
-            # Color filter
             if self.current_color_filter and note.get("color_hex") != self.current_color_filter:
                 continue
-            # Text search filter
             if search_query:
                 title_match = search_query in note.get("title", "").lower()
                 content_match = search_query in note.get("content", "").lower()
@@ -275,7 +295,6 @@ class StickyNotesGridView(QWidget):
             self.grid_layout.addWidget(empty_frame, 0, 0, 1, 3)
             return
 
-        # Render responsive grid
         cols = max(1, self.width() // 250) if self.width() > 0 else 3
 
         for index, note in enumerate(filtered):
@@ -284,14 +303,12 @@ class StickyNotesGridView(QWidget):
             
             card = NoteCard(note, self.grid_content)
             card.double_clicked.connect(self._on_card_double_clicked)
+            card.clicked.connect(self._on_card_clicked)
             card.color_changed.connect(self._on_card_color_changed)
             card.duplicate_requested.connect(self._on_card_duplicate_requested)
             card.share_requested.connect(self._on_card_share_requested)
             card.delete_requested.connect(self._on_card_delete_requested)
             card.selection_toggled.connect(self._on_card_selection_toggled)
-            
-            if self.is_selection_mode:
-                card.set_selection_mode(True)
             
             self.grid_layout.addWidget(card, row, col)
             self.note_cards.append(card)
@@ -300,15 +317,43 @@ class StickyNotesGridView(QWidget):
         self.search_input.clear()
         self._set_color_filter(None)
 
-    def _toggle_selection_mode(self):
-        self.is_selection_mode = not self.is_selection_mode
-        self.action_bar.setVisible(self.is_selection_mode)
-        self.select_mode_btn.setText("Done" if self.is_selection_mode else "Select")
-        self.selected_note_ids.clear()
-        
-        for card in self.note_cards:
-            card.set_selection_mode(self.is_selection_mode)
-            
+    def _on_card_clicked(self, note_id: str, shift_held: bool, ctrl_held: bool):
+        """
+        Standard desktop multi-selection logic:
+        - Shift+Click: Extend continuous range selection from anchor to target.
+        - Ctrl+Click: Toggle selection of target item in a multi-item group.
+        - Normal Click: Focus note, or single select if previously multiple were selected.
+        """
+        target_idx = -1
+        for idx, c in enumerate(self.note_cards):
+            if c.note_id == note_id:
+                target_idx = idx
+                break
+
+        if target_idx == -1:
+            return
+
+        if shift_held and self.anchor_card_index != -1:
+            start = min(self.anchor_card_index, target_idx)
+            end = max(self.anchor_card_index, target_idx)
+            if not ctrl_held:
+                self.selected_note_ids.clear()
+            for i in range(start, end + 1):
+                self.selected_note_ids.add(self.note_cards[i].note_id)
+            self.focused_card_index = target_idx
+        elif ctrl_held:
+            if note_id in self.selected_note_ids:
+                self.selected_note_ids.remove(note_id)
+            else:
+                self.selected_note_ids.add(note_id)
+            self.anchor_card_index = target_idx
+            self.focused_card_index = target_idx
+        else:
+            # Simple click: if multiple were selected, clear selection and select/focus this card
+            self.selected_note_ids.clear()
+            self.anchor_card_index = target_idx
+            self.focused_card_index = target_idx
+
         self._update_selection_ui()
 
     def _on_card_selection_toggled(self, note_id: str, is_selected: bool):
@@ -318,17 +363,18 @@ class StickyNotesGridView(QWidget):
             self.selected_note_ids.discard(note_id)
         self._update_selection_ui()
 
-    def _select_all_notes(self):
-        all_selected = len(self.selected_note_ids) == len(self.note_cards)
-        new_state = not all_selected
+    def _clear_selection(self):
+        """Clears all selected notes."""
         self.selected_note_ids.clear()
-        
-        for card in self.note_cards:
-            card.set_selected(new_state)
-            if new_state:
-                self.selected_note_ids.add(card.note_id)
-                
-        self.select_all_btn.setText("Deselect All" if new_state else "Select All")
+        self._update_selection_ui()
+
+    def _select_all_notes(self):
+        all_selected = len(self.selected_note_ids) == len(self.note_cards) and len(self.note_cards) > 0
+        if all_selected:
+            self.selected_note_ids.clear()
+        else:
+            self.selected_note_ids = {card.note_id for card in self.note_cards}
+            
         self._update_selection_ui()
 
     def _delete_selected_notes(self):
@@ -345,13 +391,111 @@ class StickyNotesGridView(QWidget):
         )
         if confirm == QMessageBox.StandardButton.Yes:
             database.delete_multiple_notes(list(self.selected_note_ids))
-            self._toggle_selection_mode()
+            self.selected_note_ids.clear()
             self.load_notes()
 
     def _update_selection_ui(self):
+        """Refreshes card visual selection and focuses, and manages action bar visibility."""
         count = len(self.selected_note_ids)
+        self.action_bar.setVisible(count > 0)
         self.selection_count_label.setText(f"{count} note{'s' if count != 1 else ''} selected")
         self.delete_selected_btn.setEnabled(count > 0)
+        
+        all_selected = count == len(self.note_cards) and count > 0
+        self.select_all_btn.setText(" Deselect All" if all_selected else " Select All")
+
+        for idx, card in enumerate(self.note_cards):
+            card.set_selected(card.note_id in self.selected_note_ids)
+            card.set_focused(idx == self.focused_card_index)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        """Comprehensive keyboard navigation across the sticky notes grid."""
+        key = event.key()
+        modifiers = event.modifiers()
+        shift_held = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+        ctrl_held = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+
+        # F1 or Ctrl+H: Open Help Dialog
+        if key == Qt.Key.Key_F1 or (ctrl_held and key == Qt.Key.Key_H):
+            self._open_help_dialog()
+            return
+
+        # Ctrl+N: Create new note
+        if ctrl_held and key == Qt.Key.Key_N:
+            self._create_new_note()
+            return
+
+        # Ctrl+F: Focus search input
+        if ctrl_held and key == Qt.Key.Key_F:
+            self.search_input.setFocus()
+            self.search_input.selectAll()
+            return
+
+        # Ctrl+A: Select all notes
+        if ctrl_held and key == Qt.Key.Key_A:
+            self._select_all_notes()
+            return
+
+        # Escape: Clear selection or clear search
+        if key == Qt.Key.Key_Escape:
+            if self.selected_note_ids:
+                self._clear_selection()
+            elif self.search_input.text():
+                self.search_input.clear()
+            return
+
+        # Delete / Backspace: Delete selected or focused note
+        if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if self.selected_note_ids:
+                self._delete_selected_notes()
+            elif 0 <= self.focused_card_index < len(self.note_cards):
+                self._on_card_delete_requested(self.note_cards[self.focused_card_index].note_id)
+            return
+
+        # Enter / Return: Open focused or selected note
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if 0 <= self.focused_card_index < len(self.note_cards):
+                self.open_note_requested.emit(self.note_cards[self.focused_card_index].note_id)
+                return
+            elif len(self.selected_note_ids) == 1:
+                note_id = next(iter(self.selected_note_ids))
+                self.open_note_requested.emit(note_id)
+                return
+
+        # Arrow key navigation
+        cols = max(1, self.width() // 250) if self.width() > 0 else 3
+        num_cards = len(self.note_cards)
+        if num_cards == 0:
+            super().keyPressEvent(event)
+            return
+
+        new_idx = self.focused_card_index
+        if key == Qt.Key.Key_Right:
+            new_idx = 0 if new_idx < 0 else min(num_cards - 1, new_idx + 1)
+        elif key == Qt.Key.Key_Left:
+            new_idx = 0 if new_idx < 0 else max(0, new_idx - 1)
+        elif key == Qt.Key.Key_Down:
+            new_idx = 0 if new_idx < 0 else min(num_cards - 1, new_idx + cols)
+        elif key == Qt.Key.Key_Up:
+            new_idx = 0 if new_idx < 0 else max(0, new_idx - cols)
+        else:
+            super().keyPressEvent(event)
+            return
+
+        if new_idx != self.focused_card_index:
+            if shift_held:
+                if self.anchor_card_index < 0:
+                    self.anchor_card_index = self.focused_card_index if self.focused_card_index >= 0 else 0
+                self.selected_note_ids.clear()
+                start = min(self.anchor_card_index, new_idx)
+                end = max(self.anchor_card_index, new_idx)
+                for i in range(start, end + 1):
+                    self.selected_note_ids.add(self.note_cards[i].note_id)
+            else:
+                self.anchor_card_index = new_idx
+
+            self.focused_card_index = new_idx
+            self._update_selection_ui()
 
     def _create_new_note(self):
         """Creates an untitled note and immediately switches to edit mode."""
@@ -421,6 +565,5 @@ class StickyNotesGridView(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # Re-layout grid columns if width changed significantly
         if hasattr(self, 'all_notes') and self.all_notes:
             self._filter_and_render_notes()

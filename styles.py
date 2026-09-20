@@ -487,9 +487,60 @@ QMenu::item {{
     color: {pal["text_primary"]};
 }}
 
-QMenu::item:selected {{
-    background-color: {pal["accent"]};
-    color: {pal["accent_text"]};
+QMenu::separator {{
+    height: 1px;
+    background-color: {pal["border_subtle"]};
+    margin: 4px 6px;
+}}
+
+/* Themed Dialogs & Windows */
+QDialog {{
+    background-color: {pal["bg_main"]};
+    color: {pal["text_primary"]};
+}}
+
+QTabWidget::pane {{
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    background-color: {pal["bg_surface"]};
+    padding: 12px;
+}}
+
+QTabBar::tab {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["text_secondary"]};
+    border: 1px solid {pal["border"]};
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-right: 4px;
+}}
+
+QTabBar::tab:selected {{
+    background-color: {pal["bg_surface"]};
+    color: {pal["accent"]};
+    border-color: {pal["border"]};
+    border-bottom: 2px solid {pal["accent"]};
+}}
+
+QTabBar::tab:hover:!selected {{
+    background-color: {pal["btn_hover"]};
+    color: {pal["text_primary"]};
+}}
+
+/* Help Dialog Keyboard Badges */
+QLabel.KbdBadge {{
+    background-color: {pal["btn_hover"]};
+    color: {pal["accent"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-weight: 700;
+    font-size: 12px;
 }}
 """
 

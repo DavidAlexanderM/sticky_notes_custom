@@ -20,7 +20,11 @@ if app is None:
 import icons
 from markdown_highlighter import MarkdownHighlighter
 from views.editor_view import MarkdownTextEdit, NoteEditorView
+from views.grid_view import StickyNotesGridView
 from components.note_card import NoteCard
+from components.color_picker_flyout import ColorPickerFlyout
+from components.help_dialog import HelpAboutDialog
+from theme_manager import detect_os_theme, get_theme_manager
 from main import MainWindow
 
 
@@ -163,6 +167,69 @@ def test():
         self.assertIsNotNone(win.grid_view)
         self.assertIsNotNone(win.editor_view)
         self.assertEqual(win.stacked_widget.currentIndex(), 0)
+
+    def test_help_about_dialog_structure(self):
+        """Verify HelpAboutDialog initializes with all 3 tabs and diagnostic paths."""
+        dialog = HelpAboutDialog()
+        self.assertEqual(dialog.tabs.count(), 3)
+        self.assertEqual(dialog.tabs.tabText(0), "Keyboard Shortcuts")
+        self.assertEqual(dialog.tabs.tabText(1), "Markdown & Media")
+        self.assertEqual(dialog.tabs.tabText(2), "About & Storage")
+        dialog.close()
+
+    def test_color_picker_flyout_theming(self):
+        """Verify ColorPickerFlyout renders and adapts to theme changes."""
+        mgr = get_theme_manager()
+        mgr.set_theme("dark")
+        flyout_dark = ColorPickerFlyout()
+        self.assertIn("#1E293B", flyout_dark.card.styleSheet())
+        flyout_dark.close()
+
+        mgr.set_theme("light")
+        flyout_light = ColorPickerFlyout()
+        self.assertIn("#FFFFFF", flyout_light.card.styleSheet())
+        flyout_light.close()
+
+    def test_grid_shift_and_ctrl_selection(self):
+        """Verify Shift range selection and Ctrl group selection in StickyNotesGridView."""
+        grid = StickyNotesGridView()
+        notes_mock = [
+            {"id": f"note_{i}", "title": f"Note {i}", "content": "Sample", "color_hex": "#FFF9C4", "updated_at": "2026-09-20"}
+            for i in range(5)
+        ]
+        grid.all_notes = notes_mock
+        grid._filter_and_render_notes()
+        self.assertEqual(len(grid.note_cards), 5)
+
+        # 1. Normal click card 1 -> focused and anchor set, 0 selected
+        grid._on_card_clicked("note_1", shift_held=False, ctrl_held=False)
+        self.assertEqual(grid.anchor_card_index, 1)
+        self.assertEqual(len(grid.selected_note_ids), 0)
+
+        # 2. Shift+Click card 3 -> selects notes 1, 2, 3 (continuous range)
+        grid._on_card_clicked("note_3", shift_held=True, ctrl_held=False)
+        self.assertEqual(grid.selected_note_ids, {"note_1", "note_2", "note_3"})
+        self.assertFalse(grid.action_bar.isHidden())
+
+        # 3. Ctrl+Click card 4 -> adds note 4 to group
+        grid._on_card_clicked("note_4", shift_held=False, ctrl_held=True)
+        self.assertIn("note_4", grid.selected_note_ids)
+        self.assertEqual(len(grid.selected_note_ids), 4)
+
+        # 4. Ctrl+Click card 2 -> toggles note 2 off
+        grid._on_card_clicked("note_2", shift_held=False, ctrl_held=True)
+        self.assertNotIn("note_2", grid.selected_note_ids)
+        self.assertEqual(len(grid.selected_note_ids), 3)
+
+        # 5. Clear selection -> action bar hides
+        grid._clear_selection()
+        self.assertEqual(len(grid.selected_note_ids), 0)
+        self.assertTrue(grid.action_bar.isHidden())
+
+    def test_os_theme_detection(self):
+        """Verify detect_os_theme returns a valid theme string ('light' or 'dark')."""
+        detected = detect_os_theme()
+        self.assertIn(detected, ["light", "dark"])
 
 
 if __name__ == "__main__":

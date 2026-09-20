@@ -13,6 +13,7 @@ try:
     from ..components.color_picker_flyout import ColorPickerFlyout
     from ..components.format_toolbar import FormatToolbar
     from ..components.voice_recorder_dialog import VoiceRecorderDialog
+    from ..components.help_dialog import HelpAboutDialog
     from ..media_manager import copy_to_attachments, get_attachments_dir
     from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from ..security import is_safe_url, sanitize_markdown_html
@@ -24,6 +25,7 @@ except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from components.format_toolbar import FormatToolbar
     from components.voice_recorder_dialog import VoiceRecorderDialog
+    from components.help_dialog import HelpAboutDialog
     from media_manager import copy_to_attachments, get_attachments_dir
     from styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from security import is_safe_url, sanitize_markdown_html
@@ -183,6 +185,15 @@ class NoteEditorView(QWidget):
         self.share_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.share_btn.clicked.connect(self._share_current_note)
         header_layout.addWidget(self.share_btn)
+
+        # Help & Shortcuts Button (❓)
+        self.help_btn = QPushButton(self)
+        self.help_btn.setObjectName("EditorHeaderBtn")
+        self.help_btn.setFixedSize(36, 34)
+        self.help_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.help_btn.setToolTip("Help & Keyboard Shortcuts (F1)")
+        self.help_btn.clicked.connect(self._open_help_dialog)
+        header_layout.addWidget(self.help_btn)
 
         # Theme Switcher Button (Sun / Moon)
         self.theme_mgr = get_theme_manager()
@@ -413,9 +424,13 @@ class NoteEditorView(QWidget):
             self.dup_btn.setIcon(get_themed_icon("copy", role="btn_text", theme=theme, size=18))
         if hasattr(self, 'share_btn'):
             self.share_btn.setIcon(get_themed_icon("share", role="btn_text", theme=theme, size=18))
+        if hasattr(self, 'help_btn'):
+            self.help_btn.setIcon(get_themed_icon("help_circle", role="btn_text", theme=theme, size=18))
         if hasattr(self, 'theme_btn'):
             is_dark = self.theme_mgr.is_dark_mode()
+            self.theme_btn.setText("")
             self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=18))
+            self.theme_btn.setToolTip(f"Theme: {'Dark' if is_dark else 'Light'} (Click to switch)")
 
         # Audio player buttons
         if hasattr(self, 'play_pause_btn'):
@@ -425,6 +440,17 @@ class NoteEditorView(QWidget):
             self.external_play_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
         if hasattr(self, 'close_player_btn'):
             self.close_player_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=16))
+
+    def _open_help_dialog(self):
+        """Displays the Help, Shortcuts, and About Dialog."""
+        dialog = HelpAboutDialog(self)
+        dialog.exec()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_F1 or (event.modifiers() & Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_H):
+            self._open_help_dialog()
+            return
+        super().keyPressEvent(event)
 
     def _toggle_theme(self):
         self.theme_mgr.toggle_theme()

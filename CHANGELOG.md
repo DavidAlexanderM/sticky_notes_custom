@@ -17,6 +17,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.2] - 2026-09-20
+
+### Added
+- **Fluid Shift/Ctrl Multi-Selection:**
+  - Standard desktop multi-selection: `Shift + Click` extends continuous range selection, `Ctrl + Click` toggles individual cards in a group.
+  - Automatically displays bottom `SelectionActionBar` with note count, Select All, Delete Selected, and Clear when \(\ge 1\) notes are selected.
+  - Retired the old modal "Select" header button for a streamlined, non-blocking workflow.
+- **Unified Themed Popups & Context Menus:**
+  - `ColorPickerFlyout` and `QMenu` now dynamically match the application's active theme (Dark, Light, Sepia). Eliminates hardcoded white popups when running in Dark theme.
+  - Action buttons in color flyout and card menus upgraded with vector SVG icons (`copy`, `share`, `trash`).
+- **Comprehensive Help & About Center (`HelpAboutDialog`):**
+  - Dedicated Help button (❓) in headers and accessible via `F1` / `Ctrl+H`.
+  - Tab 1: Visual Keyboard Shortcuts cheatsheet (Arrow navigation, Enter, Delete, Shift/Ctrl clicks, formatting shortcuts).
+  - Tab 2: Markdown & Media attachments reference guide.
+  - Tab 3: About metadata, database location, and 1-click button to open local attachments folder in Windows Explorer.
+- **Full Keyboard Navigation in Notes Grid:**
+  - Arrow keys (↑, ↓, ←, →) navigate and focus cards.
+  - `Shift + Arrows` expands/shrinks selection range.
+  - `Enter` / `Return` opens focused note in full editor.
+  - `Delete` / `Backspace` deletes selected notes with confirmation.
+  - `Ctrl + A` selects all notes; `Escape` clears selection or search filter.
+  - `Ctrl + N` creates a note; `Ctrl + F` focuses search bar.
+- **OS-Dependent Theme Detection (Icon-Only Buttons):**
+  - Auto-detects Windows dark/light mode preference (`AppsUseLightTheme`).
+  - Theme toggle buttons in Grid and Editor views are now icon-only (`sun` / `moon` / `monitor`) without text labels.
+- **Cleaned Header:**
+  - Removed verbose instructions subtitle from main header.
+
+---
+
 ## [1.5.1] - 2026-09-20
 
 ### Fixed

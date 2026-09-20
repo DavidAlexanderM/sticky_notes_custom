@@ -23,6 +23,7 @@ class NoteCard(QFrame):
     markdown preview excerpt, and dynamic theme contrast.
     """
     double_clicked = Signal(str)          # Emits note_id
+    clicked = Signal(str, bool, bool)    # Emits (note_id, shift_held, ctrl_held)
     color_changed = Signal(str, str)      # Emits (note_id, new_color_hex)
     delete_requested = Signal(str)       # Emits note_id
     duplicate_requested = Signal(str)    # Emits note_id
@@ -36,6 +37,7 @@ class NoteCard(QFrame):
         self.color_hex = note.get("color_hex", "#FFF9C4")
         self.selection_mode = False
         self.is_selected = False
+        self.is_focused = False
         
         self.setFixedSize(220, 200)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -144,8 +146,13 @@ class NoteCard(QFrame):
             self.check_indicator.setText("⚪")
         self._apply_style()
 
+    def set_focused(self, focused: bool):
+        self.is_focused = focused
+        self._apply_style()
+
     def set_selected(self, selected: bool):
         self.is_selected = selected
+        self.check_indicator.setVisible(selected or self.selection_mode)
         self.check_indicator.setText("🔵" if selected else "⚪")
         self._apply_style()
 
@@ -176,6 +183,8 @@ class NoteCard(QFrame):
         
         if self.is_selected:
             border_style = "2.5px solid #2563EB"
+        elif self.is_focused:
+            border_style = "2px dashed #2563EB"
         else:
             border_style = f"1.5px solid {border_color}"
 
@@ -279,19 +288,21 @@ class NoteCard(QFrame):
             return "Recently"
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        if self.selection_mode:
-            self.toggle_selection()
-            return
         if event.button() == Qt.MouseButton.LeftButton:
             self.double_clicked.emit(self.note_id)
 
     def mousePressEvent(self, event: QMouseEvent):
-        if self.selection_mode and event.button() == Qt.MouseButton.LeftButton:
-            self.toggle_selection()
+        if event.button() == Qt.MouseButton.LeftButton:
+            modifiers = event.modifiers()
+            shift_held = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+            ctrl_held = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+            self.clicked.emit(self.note_id, shift_held, ctrl_held)
+            super().mousePressEvent(event)
             return
 
         if event.button() == Qt.MouseButton.RightButton:
             self._show_color_flyout(event.globalPosition().toPoint())
+            return
         super().mousePressEvent(event)
 
     def _on_menu_btn_clicked(self):
@@ -300,33 +311,57 @@ class NoteCard(QFrame):
         self._show_card_menu(pos)
 
     def _show_card_menu(self, global_pos: QPoint):
-        """Displays modern Quick Action Menu with vector icons."""
+        """Displays modern Quick Action Menu with vector icons and dynamic theme."""
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #FFFFFF;
-                border: 1px solid rgba(0, 0, 0, 0.15);
+        try:
+            from theme_manager import get_theme_manager
+            from styles import THEME_PALETTES
+            theme_mgr = get_theme_manager()
+            theme = theme_mgr.current_theme
+            pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+            is_dark = theme_mgr.is_dark_mode()
+        except Exception:
+            theme = "light"
+            pal = {}
+            is_dark = False
+
+        menu_bg = pal.get("menu_bg", "#1E293B" if is_dark else "#FFFFFF")
+        border = pal.get("border", "#475569" if is_dark else "#CBD5E1")
+        text_color = pal.get("text_primary", "#F8FAFC" if is_dark else "#0F172A")
+        hover_bg = pal.get("btn_hover", "#334155" if is_dark else "#F1F5F9")
+        accent = pal.get("accent", "#38BDF8" if is_dark else "#2563EB")
+        sep_color = pal.get("border_subtle", "#334155" if is_dark else "#E2E8F0")
+
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {menu_bg};
+                border: 1px solid {border};
                 border-radius: 8px;
                 padding: 4px;
-            }
-            QMenu::item {
+            }}
+            QMenu::item {{
                 padding: 6px 18px 6px 10px;
                 font-size: 13px;
                 border-radius: 4px;
-                color: #0F172A;
-            }
-            QMenu::item:selected {
-                background-color: #F1F5F9;
-                color: #2563EB;
-            }
+                color: {text_color};
+            }}
+            QMenu::item:selected {{
+                background-color: {hover_bg};
+                color: {accent};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background-color: {sep_color};
+                margin: 4px 6px;
+            }}
         """)
 
-        act_edit = menu.addAction(get_icon("edit", color="#0F172A", size=16), "Open Note")
-        act_dup = menu.addAction(get_icon("copy", color="#0F172A", size=16), "Duplicate")
-        act_color = menu.addAction(get_icon("palette", color="#0F172A", size=16), "Change Color")
-        act_share = menu.addAction(get_icon("share", color="#0F172A", size=16), "Share / Export")
+        act_edit = menu.addAction(get_icon("edit", color=text_color, size=16), "Open Note")
+        act_dup = menu.addAction(get_icon("copy", color=text_color, size=16), "Duplicate")
+        act_color = menu.addAction(get_icon("palette", color=text_color, size=16), "Change Color")
+        act_share = menu.addAction(get_icon("share", color=text_color, size=16), "Share / Export")
         menu.addSeparator()
-        act_delete = menu.addAction(get_icon("trash", color="#DC2626", size=16), "Delete Note")
+        act_delete = menu.addAction(get_icon("trash", color="#EF4444", size=16), "Delete Note")
 
         action = menu.exec(global_pos)
         if action == act_edit:
