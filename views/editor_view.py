@@ -25,6 +25,8 @@ try:
     from ..theme_manager import get_theme_manager
     from ..icons import get_themed_icon
     from ..markdown_highlighter import MarkdownHighlighter
+    from ..components.tag_selector_flyout import TagSelectorFlyout
+    from ..i18n import tr
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
@@ -33,6 +35,8 @@ except ImportError:
     from components.screen_recorder_dialog import ScreenRecorderDialog, RecordingCompleteDialog
     from components.help_dialog import HelpAboutDialog
     from components.share_dialog import ShareNoteDialog
+    from components.tag_selector_flyout import TagSelectorFlyout
+    from i18n import tr
     from media_manager import copy_to_attachments, get_attachments_dir
     from styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from security import is_safe_url, sanitize_markdown_html
@@ -157,6 +161,15 @@ class NoteEditorView(QWidget):
         self.color_badge.setToolTip("Change Note Color")
         self.color_badge.clicked.connect(self._open_color_picker)
         header_layout.addWidget(self.color_badge)
+
+        # Tags Flyout Button
+        self.tags_btn = QPushButton(self)
+        self.tags_btn.setObjectName("EditorHeaderBtn")
+        self.tags_btn.setFixedSize(36, 34)
+        self.tags_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.tags_btn.setToolTip(tr("manage_tags", "Manage Tags"))
+        self.tags_btn.clicked.connect(self._open_tags_flyout)
+        header_layout.addWidget(self.tags_btn)
 
         # Mode Selector Buttons [Edit | Split | Preview]
         mode_frame = QFrame(self)
@@ -444,6 +457,9 @@ class NoteEditorView(QWidget):
             self.back_btn.setIcon(get_themed_icon("arrow_left", role="btn_text", theme=theme, size=18))
         if hasattr(self, 'dup_btn'):
             self.dup_btn.setIcon(get_themed_icon("copy", role="btn_text", theme=theme, size=18))
+        if hasattr(self, 'tags_btn'):
+            self.tags_btn.setIcon(get_themed_icon("tag", role="btn_text", theme=theme, size=17))
+            self.tags_btn.setToolTip(tr("manage_tags", "Manage Tags"))
         if hasattr(self, 'share_btn'):
             self.share_btn.setIcon(get_themed_icon("share", role="btn_text", theme=theme, size=18))
         if hasattr(self, 'help_btn'):
@@ -630,6 +646,14 @@ class NoteEditorView(QWidget):
         pos = self.color_badge.mapToGlobal(self.color_badge.rect().bottomLeft())
         flyout.move(pos.x() - 100, pos.y() + 6)
         flyout.show()
+
+    def _open_tags_flyout(self):
+        if not self.current_note_id:
+            return
+        flyout = TagSelectorFlyout(self.current_note_id, self)
+        pos = self.tags_btn.mapToGlobal(self.tags_btn.rect().bottomLeft())
+        flyout.move(pos.x() - 100, pos.y() + 6)
+        flyout.exec()
 
     def _on_color_selected(self, hex_val: str):
         self.current_color_hex = hex_val

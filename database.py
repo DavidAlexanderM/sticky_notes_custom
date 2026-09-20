@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import sqlite3
 import uuid
 from datetime import datetime
@@ -62,11 +63,23 @@ def init_db() -> None:
             )
         """)
 
-        # Schema Migration: Add project_id to notes if missing
+        # Schema Migration: Add project_id and tags to notes if missing
         cursor.execute("PRAGMA table_info(notes)")
         columns = [row["name"] for row in cursor.fetchall()]
         if "project_id" not in columns:
             cursor.execute("ALTER TABLE notes ADD COLUMN project_id TEXT DEFAULT 'default'")
+        if "tags" not in columns:
+            cursor.execute("ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT '[]'")
+
+        # Custom Tags Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS custom_tags (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                color_hex TEXT DEFAULT '#8AB4F8',
+                created_at TEXT NOT NULL
+            )
+        """)
 
         # Ensure default project exists
         cursor.execute("SELECT COUNT(*) as count FROM projects WHERE id = 'default'")
@@ -353,23 +366,24 @@ def get_note(note_id: str) -> Optional[Dict[str, Any]]:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-def create_note(title: str = "Untitled Note", content: str = "", color_hex: str = "#FFF9C4", project_id: Optional[str] = None) -> str:
+def create_note(title: str = "Untitled Note", content: str = "", color_hex: str = "#FFF9C4", project_id: Optional[str] = None, tags: Optional[List[str]] = None) -> str:
     """Creates a new note assigned to a project stack and returns its ID."""
     note_id = str(uuid.uuid4())
     now = datetime.now().isoformat()
     pid = project_id or get_active_project_id()
     if pid == "all":
         pid = "default"
+    tags_json = json.dumps(tags or [])
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO notes (id, title, content, color_hex, project_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (note_id, title, content, color_hex, pid, now, now))
+            INSERT INTO notes (id, title, content, color_hex, project_id, tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (note_id, title, content, color_hex, pid, tags_json, now, now))
         conn.commit()
     return note_id
 
-def update_note(note_id: str, title: Optional[str] = None, content: Optional[str] = None, color_hex: Optional[str] = None, project_id: Optional[str] = None) -> None:
+def update_note(note_id: str, title: Optional[str] = None, content: Optional[str] = None, color_hex: Optional[str] = None, project_id: Optional[str] = None, tags: Optional[List[str]] = None) -> None:
     """Updates fields of an existing note."""
     updates = []
     params = []
@@ -386,6 +400,9 @@ def update_note(note_id: str, title: Optional[str] = None, content: Optional[str
     if project_id is not None:
         updates.append("project_id = ?")
         params.append(project_id)
+    if tags is not None:
+        updates.append("tags = ?")
+        params.append(json.dumps(tags))
         
     if not updates:
         return
@@ -414,11 +431,18 @@ def duplicate_note(note_id: str) -> Optional[str]:
         return None
     
     new_title = f"{existing['title']} (Copy)"
+    tags_list = []
+    if existing.get("tags"):
+        try:
+            tags_list = json.loads(existing["tags"]) if isinstance(existing["tags"], str) else existing["tags"]
+        except Exception:
+            tags_list = []
     return create_note(
         title=new_title,
         content=existing["content"],
         color_hex=existing["color_hex"],
-        project_id=existing.get("project_id", "default")
+        project_id=existing.get("project_id", "default"),
+        tags=tags_list
     )
 
 def delete_multiple_notes(note_ids: List[str]) -> None:
@@ -429,4 +453,123 @@ def delete_multiple_notes(note_ids: List[str]) -> None:
         cursor = conn.cursor()
         cursor.executemany("DELETE FROM notes WHERE id = ?", [(nid,) for nid in note_ids])
         conn.commit()
+
+
+# --- Tag Management Subsystem ---
+
+PREDETERMINED_TAGS = [
+    {"id": "urgent", "key": "tag_urgent", "default_name": "Urgent", "color_hex": "#EF4444"},
+    {"id": "todo", "key": "tag_todo", "default_name": "To-Do", "color_hex": "#F59E0B"},
+    {"id": "work", "key": "tag_work", "default_name": "Work", "color_hex": "#3B82F6"},
+    {"id": "personal", "key": "tag_personal", "default_name": "Personal", "color_hex": "#10B981"},
+    {"id": "ideas", "key": "tag_ideas", "default_name": "Ideas", "color_hex": "#8B5CF6"},
+]
+
+def get_custom_tags() -> List[Dict[str, Any]]:
+    """Fetches all custom tags created by the user, ordered by creation date."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM custom_tags ORDER BY created_at ASC")
+        return [dict(row) for row in cursor.fetchall()]
+
+def create_custom_tag(name: str, color_hex: str = "#8AB4F8") -> Optional[Dict[str, Any]]:
+    """Creates a new custom tag if not already existing."""
+    clean_name = name.strip()
+    if not clean_name:
+        return None
+    now = datetime.now().isoformat()
+    tag_id = str(uuid.uuid4())
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO custom_tags (id, name, color_hex, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (tag_id, clean_name, color_hex, now))
+            conn.commit()
+            return {"id": tag_id, "name": clean_name, "color_hex": color_hex, "created_at": now}
+        except sqlite3.IntegrityError:
+            return None
+
+def delete_custom_tag(name: str) -> None:
+    """Deletes a custom tag and removes it from all assigned notes."""
+    clean_name = name.strip()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_tags WHERE name = ?", (clean_name,))
+        cursor.execute("SELECT id, tags FROM notes WHERE tags LIKE ?", (f'%"{clean_name}"%',))
+        for row in cursor.fetchall():
+            try:
+                tags = json.loads(row["tags"]) if row["tags"] else []
+                if clean_name in tags:
+                    tags.remove(clean_name)
+                    cursor.execute("UPDATE notes SET tags = ? WHERE id = ?", (json.dumps(tags), row["id"]))
+            except Exception:
+                pass
+        conn.commit()
+
+def rename_custom_tag(old_name: str, new_name: str) -> bool:
+    """Renames a custom tag and updates it on all assigned notes."""
+    old_clean = old_name.strip()
+    new_clean = new_name.strip()
+    if not old_clean or not new_clean or old_clean == new_clean:
+        return False
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE custom_tags SET name = ? WHERE name = ?", (new_clean, old_clean))
+            cursor.execute("SELECT id, tags FROM notes WHERE tags LIKE ?", (f'%"{old_clean}"%',))
+            for row in cursor.fetchall():
+                try:
+                    tags = json.loads(row["tags"]) if row["tags"] else []
+                    if old_clean in tags:
+                        tags = [new_clean if t == old_clean else t for t in tags]
+                        cursor.execute("UPDATE notes SET tags = ? WHERE id = ?", (json.dumps(tags), row["id"]))
+                except Exception:
+                    pass
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+def get_note_tags(note_id: str) -> List[str]:
+    """Returns the list of assigned tag names for a note."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tags FROM notes WHERE id = ?", (note_id,))
+        row = cursor.fetchone()
+        if row and row["tags"]:
+            try:
+                parsed = json.loads(row["tags"])
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                return []
+    return []
+
+def set_note_tags(note_id: str, tags: List[str]) -> None:
+    """Updates the list of tags for a given note."""
+    clean_tags = [t.strip() for t in tags if t.strip()]
+    now = datetime.now().isoformat()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE notes SET tags = ?, updated_at = ? WHERE id = ?", (json.dumps(clean_tags), now, note_id))
+        conn.commit()
+
+def get_all_tag_counts() -> Dict[str, int]:
+    """Returns a dictionary mapping tag names to note counts."""
+    counts: Dict[str, int] = {}
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tags FROM notes WHERE tags IS NOT NULL AND tags != '[]'")
+        for row in cursor.fetchall():
+            try:
+                t_list = json.loads(row["tags"])
+                if isinstance(t_list, list):
+                    for t in t_list:
+                        counts[t] = counts.get(t, 0) + 1
+            except Exception:
+                pass
+    return counts
+
 

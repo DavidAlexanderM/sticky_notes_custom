@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 import re
 from PySide6.QtCore import Qt, Signal, QPoint, QMimeData
@@ -11,10 +12,12 @@ try:
     from .color_picker_flyout import ColorPickerFlyout
     from ..styles import is_dark_color
     from ..icons import get_icon, render_note_stack_icon
+    from ..i18n import tr
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from styles import is_dark_color
     from icons import get_icon, render_note_stack_icon
+    from i18n import tr
 
 
 class NoteCard(QFrame):
@@ -31,6 +34,7 @@ class NoteCard(QFrame):
     selection_toggled = Signal(str, bool) # Emits (note_id, is_selected)
     move_to_project_requested = Signal(str, str) # Emits (note_id, target_project_id)
     create_stack_requested = Signal(str, str)    # Emits (source_note_id, target_note_id)
+    tags_updated = Signal(str)           # Emits note_id when tags are modified
 
     def __init__(self, note: dict, parent=None):
         super().__init__(parent)
@@ -54,6 +58,17 @@ class NoteCard(QFrame):
         self.shadow.setColor(QColor(0, 0, 0, 32))
         self.shadow.setOffset(0, 3)
         self.setGraphicsEffect(self.shadow)
+
+        raw_tags = self.note.get("tags", [])
+        if isinstance(raw_tags, str):
+            try:
+                self.tags = json.loads(raw_tags)
+            except Exception:
+                self.tags = []
+        elif isinstance(raw_tags, list):
+            self.tags = raw_tags
+        else:
+            self.tags = []
 
         # Layout
         layout = QVBoxLayout(self)
@@ -104,6 +119,12 @@ class NoteCard(QFrame):
         self.badge_label.setObjectName("CardBadges")
         self.badge_label.setVisible(bool(badges))
         layout.addWidget(self.badge_label)
+
+        # Tag Badges row
+        self.tags_label = QLabel(self._format_tags_text(), self)
+        self.tags_label.setObjectName("CardTagsBadge")
+        self.tags_label.setVisible(bool(self.tags))
+        layout.addWidget(self.tags_label)
 
         # Bottom row (timestamp + palette hint)
         bottom_row = QHBoxLayout()
@@ -226,6 +247,14 @@ class NoteCard(QFrame):
                 background-color: {badge_bg};
                 border-radius: 6px;
                 padding: 3px 8px;
+            }}
+            QLabel#CardTagsBadge {{
+                font-size: 10px;
+                font-weight: 600;
+                color: {text_color};
+                background-color: {badge_bg};
+                border-radius: 5px;
+                padding: 2px 7px;
             }}
             QLabel#CardDate {{
                 color: {date_color};
@@ -408,9 +437,10 @@ class NoteCard(QFrame):
             }}
         """)
 
-        act_edit = menu.addAction(get_icon("edit", color=text_color, size=16), "Open Note")
-        act_dup = menu.addAction(get_icon("copy", color=text_color, size=16), "Duplicate")
-        act_color = menu.addAction(get_icon("palette", color=text_color, size=16), "Change Color")
+        act_edit = menu.addAction(get_icon("edit", color=text_color, size=16), tr("open_note", "Open Note"))
+        act_dup = menu.addAction(get_icon("copy", color=text_color, size=16), tr("duplicate", "Duplicate"))
+        act_color = menu.addAction(get_icon("palette", color=text_color, size=16), tr("change_color", "Change Color"))
+        act_tags = menu.addAction(get_icon("tag", color=text_color, size=16), tr("manage_tags", "Manage Tags..."))
 
         # Move to Project Stack submenu
         project_actions = {}
@@ -421,7 +451,7 @@ class NoteCard(QFrame):
                 import database
             projects = database.get_all_projects()
             if projects:
-                move_menu = menu.addMenu(render_note_stack_icon("#8AB4F8", size=16), "Move to Stack")
+                move_menu = menu.addMenu(render_note_stack_icon("#8AB4F8", size=16), tr("move_to_stack", "Move to Stack"))
                 current_pid = self.note.get("project_id", "default")
                 for p in projects:
                     p_id = p["id"]
@@ -435,9 +465,9 @@ class NoteCard(QFrame):
         except Exception:
             pass
 
-        act_share = menu.addAction(get_icon("share", color=text_color, size=16), "Share / Export")
+        act_share = menu.addAction(get_icon("share", color=text_color, size=16), tr("share_export", "Share / Export"))
         menu.addSeparator()
-        act_delete = menu.addAction(get_icon("trash", color="#EF4444", size=16), "Delete Note")
+        act_delete = menu.addAction(get_icon("trash", color="#EF4444", size=16), tr("delete_note", "Delete Note"))
 
         action = menu.exec(global_pos)
         if action == act_edit:
@@ -446,6 +476,8 @@ class NoteCard(QFrame):
             self.duplicate_requested.emit(self.note_id)
         elif action == act_color:
             self._show_color_flyout(global_pos)
+        elif action == act_tags:
+            self._show_tags_flyout(global_pos)
         elif action in project_actions:
             self.move_to_project_requested.emit(self.note_id, project_actions[action])
         elif action == act_share:
@@ -462,6 +494,31 @@ class NoteCard(QFrame):
         flyout.move(global_pos.x() - 20, global_pos.y() - 20)
         flyout.show()
 
+    def _show_tags_flyout(self, global_pos: QPoint):
+        try:
+            from .tag_selector_flyout import TagSelectorFlyout
+        except ImportError:
+            from components.tag_selector_flyout import TagSelectorFlyout
+        flyout = TagSelectorFlyout(self.note_id, self)
+        flyout.tags_changed.connect(self._on_tags_changed)
+        flyout.move(global_pos.x() - 20, global_pos.y())
+        flyout.exec()
+
+    def _on_tags_changed(self, note_id: str, tags: list):
+        self.tags = tags
+        self.tags_label.setText(self._format_tags_text())
+        self.tags_label.setVisible(bool(self.tags))
+        self.tags_updated.emit(self.note_id)
+
+    def _format_tags_text(self) -> str:
+        if not hasattr(self, 'tags') or not self.tags:
+            return ""
+        tag_str = "  ".join([f"#{t}" for t in self.tags[:2]])
+        if len(self.tags) > 2:
+            tag_str += f" +{len(self.tags) - 2}"
+        return tag_str
+
     def _on_flyout_color_selected(self, hex_val: str):
         self.update_color(hex_val)
         self.color_changed.emit(self.note_id, hex_val)
+
