@@ -57,10 +57,9 @@ def build():
     app_folder = dist_dir / app_name
     print(f"[SUCCESS] Standalone app built at: {app_folder}")
 
-    # Create a ready-to-gift ZIP file
-    pkg_name = "Danielle_StickyNotes" if "Danielle" in APP_NAME else app_name
-    zip_path = dist_dir / f"{pkg_name}_v{__version__}_Windows.zip"
-    print(f"Creating portable gift ZIP: {zip_path.name} ...")
+    # Create a ready-to-distribute portable ZIP file (privacy invariant: generic package naming)
+    zip_path = dist_dir / f"StickyNotes_v{__version__}_Windows.zip"
+    print(f"Creating portable ZIP: {zip_path.name} ...")
     
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, _, files in os.walk(app_folder):

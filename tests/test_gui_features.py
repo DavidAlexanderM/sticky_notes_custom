@@ -175,7 +175,7 @@ def test():
         self.assertEqual(dialog.tabs.count(), 3)
         self.assertEqual(dialog.tabs.tabText(0), "Keyboard Shortcuts")
         self.assertEqual(dialog.tabs.tabText(1), "Markdown & Media")
-        self.assertEqual(dialog.tabs.tabText(2), "About & Storage")
+        self.assertEqual(dialog.tabs.tabText(2), "About")
         dialog.close()
 
     def test_color_picker_flyout_theming(self):
