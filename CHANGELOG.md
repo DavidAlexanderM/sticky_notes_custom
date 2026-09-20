@@ -17,6 +17,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.2] - 2026-09-19
+
+### Fixed
+- **Voice Recording & Playback Reliability:**
+  - Resolved unplayable/corrupt recordings caused by premature asynchronous destruction of `VoiceRecorder` during dialog acceptance.
+  - Implemented async recorder state tracking (`recorderStateChanged`) and safe flush timeouts.
+  - Added empty container detection preventing 0-byte/corrupt audio files from being attached when a microphone is muted or blocked by Windows privacy settings.
+  - Built-in In-App Audio Player (`QMediaPlayer` + `QAudioOutput`) enabling immediate audio playback and seeking directly within the application.
+- **Markdown Rendering & Card Excerpt Overhaul:**
+  - Fixed disappearance of markdown task checkboxes by translating `- [ ]` / `- [x]` into native Unicode ballot boxes (`☐` / `☑`) supported by `QTextBrowser`.
+  - Prevented filename underscores in media links from mangling into italics (`voice_note_...` turning into `voicenote...`).
+  - Polished NoteCard excerpt generation (`_clean_excerpt`) to strip raw list markers and media markdown, eliminating garbled text on launch.
+  - Enhanced syntax highlighting (`.codehilite`) and markdown table styles in preview CSS.
+  - Fixed format toolbar button widths and icon padding so labels like "Audio" are never clipped.
+
+---
+
 ## [1.4.1] - 2026-09-19
 
 ### Fixed

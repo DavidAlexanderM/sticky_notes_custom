@@ -96,6 +96,10 @@ class VoiceRecorderDialog(QDialog):
         self.record_btn.clicked.connect(self._toggle_recording)
         layout.addWidget(self.record_btn)
 
+        # Wire recorder callbacks
+        self.recorder.recording_finished.connect(self._on_recording_finished)
+        self.recorder.recording_error.connect(self._on_recording_error)
+
         # Separator line
         sep = QFrame(self)
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -163,10 +167,35 @@ class VoiceRecorderDialog(QDialog):
             except Exception as e:
                 QMessageBox.warning(self, "Recording Error", f"Unable to access microphone: {e}")
         else:
-            # Stop recording and attach
-            saved_path = self.recorder.stop_recording()
-            self.result_audio_path = saved_path
-            self.accept()
+            # Stop recording and wait for finalization
+            self.record_btn.setEnabled(False)
+            self.record_btn.setText("⏳ Finalizing Audio...")
+            self.status_label.setText("Saving and verifying recording...")
+            self.recorder.stop_recording()
+
+    def _on_recording_finished(self, saved_path: str):
+        self.result_audio_path = saved_path
+        self.accept()
+
+    def _on_recording_error(self, err_msg: str):
+        self.record_btn.setEnabled(True)
+        self.record_btn.setText("🔴 Record Again")
+        self.record_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #DC2626;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background-color: #B91C1C; }
+        """)
+        self.status_label.setText("Audio capture failed or was empty")
+        self.status_label.setStyleSheet("font-size: 11px; color: #DC2626; font-weight: 500;")
+        self.choose_file_btn.setEnabled(True)
+        QMessageBox.warning(self, "Recording Issue", err_msg)
 
     def _on_duration_changed(self, seconds: int):
         mins = seconds // 60

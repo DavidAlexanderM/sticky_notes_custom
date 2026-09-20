@@ -40,19 +40,16 @@ class FormatToolbar(QFrame):
 
         # Italics (I)
         self.btn_italic = FormatButton("I", "Italics (Ctrl+I)", self)
-        self.btn_italic.setStyleSheet(self.btn_italic.styleSheet() + "font-style: italic; font-family: 'Times New Roman', serif; font-size: 14px;")
         self.btn_italic.clicked.connect(self.apply_italic)
         layout.addWidget(self.btn_italic)
 
         # Underline (U)
         self.btn_underline = FormatButton("U", "Underline (Ctrl+U)", self)
-        self.btn_underline.setStyleSheet(self.btn_underline.styleSheet() + "text-decoration: underline; font-family: 'Times New Roman', serif; font-size: 14px;")
         self.btn_underline.clicked.connect(self.apply_underline)
         layout.addWidget(self.btn_underline)
 
         # Strikethrough (S)
         self.btn_strike = FormatButton("S", "Strikethrough", self)
-        self.btn_strike.setStyleSheet(self.btn_strike.styleSheet() + "text-decoration: line-through; font-family: 'Times New Roman', serif; font-size: 14px;")
         self.btn_strike.clicked.connect(self.apply_strikethrough)
         layout.addWidget(self.btn_strike)
 
@@ -86,7 +83,7 @@ class FormatToolbar(QFrame):
         layout.addWidget(self.btn_picture)
 
         # Media: Audio / Voice
-        self.btn_audio = FormatButton("🎙 Voice / Audio", "Record Voice Note or Attach Audio", self)
+        self.btn_audio = FormatButton("🎙 Audio", "Record Voice Note or Attach Audio", self)
         self.btn_audio.clicked.connect(self.add_audio_requested.emit)
         layout.addWidget(self.btn_audio)
 

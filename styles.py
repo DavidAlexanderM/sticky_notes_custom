@@ -195,7 +195,7 @@ QPushButton#NewNoteButton:pressed {{
 }}
 
 /* Standard High-Contrast Buttons */
-QPushButton#ThemeToggleBtn, QPushButton#SelectModeButton, QPushButton#EditorHeaderBtn {{
+QPushButton#ThemeToggleBtn, QPushButton#SelectModeButton {{
     background-color: {pal["btn_bg"]};
     color: {pal["btn_text"]};
     border: 1px solid {pal["border"]};
@@ -205,7 +205,43 @@ QPushButton#ThemeToggleBtn, QPushButton#SelectModeButton, QPushButton#EditorHead
     font-weight: 600;
 }}
 
-QPushButton#ThemeToggleBtn:hover, QPushButton#SelectModeButton:hover, QPushButton#EditorHeaderBtn:hover {{
+QPushButton#ThemeToggleBtn:hover, QPushButton#SelectModeButton:hover {{
+    background-color: {pal["btn_hover"]};
+    border-color: {pal["accent"]};
+}}
+
+QPushButton#EditorHeaderBtn {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["btn_text"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    padding: 2px;
+    font-size: 15px;
+    font-weight: 600;
+}}
+
+QPushButton#EditorHeaderBtn:hover {{
+    background-color: {pal["btn_hover"]};
+    border-color: {pal["accent"]};
+}}
+
+/* In-App Audio Player */
+QFrame#AudioPlayerFrame {{
+    background-color: {pal["bg_surface"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 10px;
+    padding: 6px 12px;
+}}
+
+QFrame#AudioPlayerFrame QPushButton {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["btn_text"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 6px;
+    font-weight: 700;
+}}
+
+QFrame#AudioPlayerFrame QPushButton:hover {{
     background-color: {pal["btn_hover"]};
     border-color: {pal["accent"]};
 }}
@@ -536,6 +572,27 @@ img {{
     margin: 10px 0;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     display: block;
+}}
+table {{
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+}}
+th, td {{
+    border: 1px solid {border_color};
+    padding: 8px 12px;
+    text-align: left;
+}}
+th {{
+    background-color: {pre_bg};
+    font-weight: 700;
+}}
+.codehilite {{
+    background-color: {pre_bg};
+    border: 1px solid {border_color};
+    border-radius: 8px;
+    padding: 10px;
+    margin: 10px 0;
 }}
 a {{
     color: {link_color};

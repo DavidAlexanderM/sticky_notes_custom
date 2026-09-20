@@ -1,12 +1,14 @@
+import re
 from pathlib import Path
 import markdown2
 from PySide6.QtCore import Qt, Signal, QTimer, QUrl
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QTextEdit, QTextBrowser, QPushButton,
-    QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication
+    QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication, QSlider
 )
 from PySide6.QtGui import QCursor, QDesktopServices
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 try:
     from ..components.color_picker_flyout import ColorPickerFlyout
     from ..components.format_toolbar import FormatToolbar
@@ -108,7 +110,7 @@ class NoteEditorView(QWidget):
         self.dup_btn = QPushButton("📋", self)
         self.dup_btn.setObjectName("EditorHeaderBtn")
         self.dup_btn.setToolTip("Duplicate Note")
-        self.dup_btn.setFixedSize(34, 32)
+        self.dup_btn.setFixedSize(36, 34)
         self.dup_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.dup_btn.clicked.connect(self._duplicate_current_note)
         header_layout.addWidget(self.dup_btn)
@@ -116,7 +118,7 @@ class NoteEditorView(QWidget):
         self.share_btn = QPushButton("↗", self)
         self.share_btn.setObjectName("EditorHeaderBtn")
         self.share_btn.setToolTip("Share / Export Note")
-        self.share_btn.setFixedSize(34, 32)
+        self.share_btn.setFixedSize(36, 34)
         self.share_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.share_btn.clicked.connect(self._share_current_note)
         header_layout.addWidget(self.share_btn)
@@ -125,7 +127,7 @@ class NoteEditorView(QWidget):
         self.theme_mgr = get_theme_manager()
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("EditorHeaderBtn")
-        self.theme_btn.setFixedSize(34, 32)
+        self.theme_btn.setFixedSize(36, 34)
         self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.theme_btn.setToolTip("Toggle Light / Dark Theme")
         self.theme_btn.clicked.connect(self._toggle_theme)
@@ -174,11 +176,64 @@ class NoteEditorView(QWidget):
 
         main_layout.addWidget(self.splitter, 1)
 
+        # In-App Audio Player Bar (Hidden by default, shown when playing audio)
+        self.audio_player_frame = QFrame(self)
+        self.audio_player_frame.setObjectName("AudioPlayerFrame")
+        self.audio_player_frame.setVisible(False)
+        player_layout = QHBoxLayout(self.audio_player_frame)
+        player_layout.setContentsMargins(12, 6, 12, 6)
+        player_layout.setSpacing(10)
+
+        self.play_pause_btn = QPushButton("⏸", self.audio_player_frame)
+        self.play_pause_btn.setFixedSize(32, 30)
+        self.play_pause_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.play_pause_btn.clicked.connect(self._toggle_audio_playback)
+        player_layout.addWidget(self.play_pause_btn)
+
+        self.audio_title_label = QLabel("🎵 Audio", self.audio_player_frame)
+        self.audio_title_label.setStyleSheet("font-weight: 600; font-size: 12px;")
+        player_layout.addWidget(self.audio_title_label)
+
+        self.audio_slider = QSlider(Qt.Orientation.Horizontal, self.audio_player_frame)
+        self.audio_slider.setRange(0, 0)
+        self.audio_slider.sliderMoved.connect(self._on_seek_audio)
+        player_layout.addWidget(self.audio_slider, 1)
+
+        self.audio_time_label = QLabel("00:00 / 00:00", self.audio_player_frame)
+        self.audio_time_label.setStyleSheet("font-size: 11px; opacity: 0.85;")
+        player_layout.addWidget(self.audio_time_label)
+
+        self.external_play_btn = QPushButton("↗", self.audio_player_frame)
+        self.external_play_btn.setToolTip("Open in external media player")
+        self.external_play_btn.setFixedSize(30, 28)
+        self.external_play_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.external_play_btn.clicked.connect(self._open_audio_externally)
+        player_layout.addWidget(self.external_play_btn)
+
+        self.close_player_btn = QPushButton("✕", self.audio_player_frame)
+        self.close_player_btn.setToolTip("Close Player")
+        self.close_player_btn.setFixedSize(28, 28)
+        self.close_player_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.close_player_btn.clicked.connect(self._stop_and_hide_audio_player)
+        player_layout.addWidget(self.close_player_btn)
+
+        main_layout.addWidget(self.audio_player_frame)
+
+        # QMediaPlayer setup
+        self.media_player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)
+        self.media_player.setAudioOutput(self.audio_output)
+        self.media_player.positionChanged.connect(self._on_player_position_changed)
+        self.media_player.durationChanged.connect(self._on_player_duration_changed)
+        self.media_player.playbackStateChanged.connect(self._on_player_state_changed)
+        self._current_audio_url = None
+
         # Default Mode is Split View
         self.set_view_mode("split")
 
     def load_note(self, note_id: str):
         """Loads a note by ID into the editor."""
+        self._stop_and_hide_audio_player()
         self.current_note_id = note_id
         note = database.get_note(note_id)
         if not note:
@@ -229,14 +284,35 @@ class NoteEditorView(QWidget):
 
     def _render_markdown(self):
         raw_text = self.editor.toPlainText()
-        # Convert markdown to html using markdown2 with code, tables, and fenced-code-blocks
+
+        # 1. Transform markdown tasks into clean Unicode checkboxes for QTextBrowser
+        # Replace '- [ ] ' with '- ☐ ' and '- [x] ' / '- [X] ' with '- ☑ '
+        processed_text = re.sub(r'^(\s*[-*+]\s*)\[ \]\s*', r'\1☐ ', raw_text, flags=re.MULTILINE)
+        processed_text = re.sub(r'^(\s*[-*+]\s*)\[[xX]\]\s*', r'\1☑ ', processed_text, flags=re.MULTILINE)
+
+        # 2. Transform Voice/Audio and Video links into safe escaped markdown links
+        # This prevents filenames like voice_note_abc.wav from turning into italics!
+        def _safe_media_link(match):
+            icon = match.group(1)
+            action = match.group(2)
+            name = match.group(3).strip()
+            url = match.group(4).strip()
+            return f"\n\n{icon} [{action} `{name}`]({url})\n\n"
+
+        processed_text = re.sub(
+            r'([🎵🎥])\s*\[(Play Voice Note:|Watch Video:)\s*([^\]]+)\]\(([^)]+)\)',
+            _safe_media_link,
+            processed_text
+        )
+
+        # Convert markdown to html using markdown2 with fenced-code-blocks, tables, and strike
         html_body = markdown2.markdown(
-            raw_text, 
-            extras=["fenced-code-blocks", "tables", "task_list", "strike"]
+            processed_text, 
+            extras=["fenced-code-blocks", "tables", "strike"]
         )
         safe_html_body = sanitize_markdown_html(html_body)
         css = self.theme_mgr.get_markdown_css()
-        full_html = f"<html><head>{css}</head><body>{safe_html_body}</body></html>"
+        full_html = f"<!DOCTYPE html><html><head><meta charset=\"utf-8\">{css}</head><body>{safe_html_body}</body></html>"
         self.preview.setHtml(full_html)
 
     def _update_theme_btn_label(self):
@@ -265,6 +341,7 @@ class NoteEditorView(QWidget):
         database.update_note(self.current_note_id, title=title, content=content, color_hex=self.current_color_hex)
 
     def _on_back_clicked(self):
+        self._stop_and_hide_audio_player()
         self._auto_save()
         self.back_requested.emit()
 
@@ -399,17 +476,91 @@ class NoteEditorView(QWidget):
             self.editor.setFocus()
 
     def _on_anchor_clicked(self, url: QUrl):
-        """Open audio/video media files or links with security validation."""
+        """Open audio/video media files or links with security validation and in-app playback."""
         url_str = url.toString()
         is_safe, reason = is_safe_url(url_str, allowed_attachments_dir=get_attachments_dir())
-        if is_safe:
-            QDesktopServices.openUrl(url)
-        else:
+        if not is_safe:
             QMessageBox.warning(
                 self, 
                 "Security Alert", 
                 f"Opening this link was blocked for your protection:\n\n{url_str}\n\nReason: {reason}"
             )
+            return
+
+        # Check local files for existence, zero-byte status, and in-app playback
+        if url.isLocalFile():
+            local_path = Path(url.toLocalFile())
+            if not local_path.exists():
+                QMessageBox.warning(
+                    self,
+                    "File Not Found",
+                    f"The attached file could not be found:\n\n{local_path.name}\n\nIt may have been moved or deleted."
+                )
+                return
+
+            if local_path.stat().st_size <= 350 and local_path.suffix.lower() in ('.wav', '.m4a', '.mp3'):
+                QMessageBox.warning(
+                    self,
+                    "Empty Recording",
+                    f"This audio recording is empty (0 bytes of sound captured).\n\n"
+                    f"File: {local_path.name}\n\n"
+                    "The microphone did not send any audio data when this note was recorded."
+                )
+                return
+
+            # Audio attachments play directly inside the app!
+            if local_path.suffix.lower() in ('.wav', '.m4a', '.mp3', '.ogg', '.flac', '.aac'):
+                self._play_audio_in_app(url, local_path.name)
+                return
+
+        # For videos, external web links, or other documents, open with system default handler
+        QDesktopServices.openUrl(url)
+
+    def _play_audio_in_app(self, url: QUrl, name: str):
+        """Starts in-app audio playback and reveals the player control bar."""
+        self._current_audio_url = url
+        clean_name = name.replace("voice_note_", "Voice Note ")
+        self.audio_title_label.setText(f"🎵 {clean_name}")
+        self.audio_player_frame.setVisible(True)
+        self.media_player.setSource(url)
+        self.media_player.play()
+
+    def _toggle_audio_playback(self):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+        else:
+            self.media_player.play()
+
+    def _on_seek_audio(self, pos_ms: int):
+        self.media_player.setPosition(pos_ms)
+
+    def _on_player_position_changed(self, pos_ms: int):
+        if not self.audio_slider.isSliderDown():
+            self.audio_slider.setValue(pos_ms)
+        self._update_time_label(pos_ms, self.media_player.duration())
+
+    def _on_player_duration_changed(self, dur_ms: int):
+        self.audio_slider.setRange(0, dur_ms)
+        self._update_time_label(self.media_player.position(), dur_ms)
+
+    def _on_player_state_changed(self, state):
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_pause_btn.setText("⏸")
+        else:
+            self.play_pause_btn.setText("▶")
+
+    def _update_time_label(self, current_ms: int, total_ms: int):
+        cur_sec = current_ms // 1000
+        tot_sec = max(0, total_ms // 1000)
+        self.audio_time_label.setText(f"{cur_sec // 60:02d}:{cur_sec % 60:02d} / {tot_sec // 60:02d}:{tot_sec % 60:02d}")
+
+    def _open_audio_externally(self):
+        if self._current_audio_url:
+            QDesktopServices.openUrl(self._current_audio_url)
+
+    def _stop_and_hide_audio_player(self):
+        self.media_player.stop()
+        self.audio_player_frame.setVisible(False)
 
     def keyPressEvent(self, event):
         # Keyboard formatting shortcuts

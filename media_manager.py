@@ -89,11 +89,23 @@ class VoiceRecorder(QObject):
         self.session.setAudioInput(self.audio_input)
         self.session.setRecorder(self.recorder)
 
-        # Configure high quality compressed audio format
+        # Configure reliable audio format
         m_format = QMediaFormat()
-        m_format.setFileFormat(QMediaFormat.FileFormat.MPEG4)
-        m_format.setAudioCodec(QMediaFormat.AudioCodec.AAC)
+        supported_formats = m_format.supportedFileFormats(QMediaFormat.ConversionMode.Encode)
+        if QMediaFormat.FileFormat.Wave in supported_formats:
+            m_format.setFileFormat(QMediaFormat.FileFormat.Wave)
+            m_format.setAudioCodec(QMediaFormat.AudioCodec.Wave)
+            self._extension = ".wav"
+        else:
+            m_format.setFileFormat(QMediaFormat.FileFormat.Mpeg4Audio)
+            m_format.setAudioCodec(QMediaFormat.AudioCodec.AAC)
+            self._extension = ".m4a"
         self.recorder.setMediaFormat(m_format)
+
+        # State tracking
+        self._stopping = False
+        self.recorder.recorderStateChanged.connect(self._on_recorder_state_changed)
+        self.recorder.errorOccurred.connect(self._on_recorder_error)
 
         # Elapsed timer
         self.timer = QTimer(self)
@@ -102,11 +114,17 @@ class VoiceRecorder(QObject):
         self.elapsed_seconds = 0
         self.output_file_path = None
 
+        # Fallback flush timer in case stopped state signal is delayed
+        self._flush_timer = QTimer(self)
+        self._flush_timer.setSingleShot(True)
+        self._flush_timer.timeout.connect(self._finalize_and_verify)
+
     def start_recording(self) -> str:
         """Starts recording audio and returns the target file path."""
-        unique_name = f"voice_note_{uuid.uuid4().hex[:8]}.m4a"
+        unique_name = f"voice_note_{uuid.uuid4().hex[:8]}{self._extension}"
         target_path = get_attachments_dir() / unique_name
         self.output_file_path = str(target_path)
+        self._stopping = False
 
         self.recorder.setOutputLocation(QUrl.fromLocalFile(self.output_file_path))
         self.recorder.record()
@@ -116,18 +134,57 @@ class VoiceRecorder(QObject):
         self.duration_changed.emit(0)
         return self.output_file_path
 
-    def stop_recording(self) -> Optional[str]:
-        """Stops recording and returns the path to the saved audio file."""
+    def stop_recording(self):
+        """Asynchronously stops recording and signals when file is finalized."""
         self.timer.stop()
+        self._stopping = True
         self.recorder.stop()
-        if self.output_file_path and Path(self.output_file_path).exists():
-            self.recording_finished.emit(self.output_file_path)
-            return self.output_file_path
-        return self.output_file_path
+        # Set 1500ms safety timer in case state signal doesn't fire
+        self._flush_timer.start(1500)
+
+    def _on_recorder_state_changed(self, state):
+        if state == QMediaRecorder.RecorderState.StoppedState and self._stopping:
+            self._flush_timer.stop()
+            self._finalize_and_verify()
+
+    def _on_recorder_error(self, error, error_string):
+        self.recording_error.emit(f"Audio recording failed: {error_string}")
+
+    def _finalize_and_verify(self):
+        if not self._stopping:
+            return
+        self._stopping = False
+
+        if not self.output_file_path:
+            self.recording_error.emit("No output file was specified.")
+            return
+
+        out_path = Path(self.output_file_path)
+        if not out_path.exists():
+            self.recording_error.emit("Recording file was not created by the media system.")
+            return
+
+        size = out_path.stat().st_size
+        # Minimum valid audio container size (avoiding 0-byte or empty header files)
+        if size <= 350:
+            try:
+                os.remove(self.output_file_path)
+            except Exception:
+                pass
+            self.recording_error.emit(
+                "No audio data was captured from your microphone (0 bytes recorded).\n\n"
+                "Please verify that your microphone/headset is plugged in, not muted in Windows, "
+                "and that 'Microphone access for desktop apps' is enabled in Windows Privacy Settings."
+            )
+            return
+
+        self.recording_finished.emit(self.output_file_path)
 
     def cancel_recording(self):
         """Cancels recording and cleans up temporary file."""
         self.timer.stop()
+        self._flush_timer.stop()
+        self._stopping = False
         self.recorder.stop()
         if self.output_file_path and Path(self.output_file_path).exists():
             try:

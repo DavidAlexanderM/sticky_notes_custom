@@ -27,6 +27,7 @@ def build():
         "--noconsole",
         "--windowed",
         "--clean",
+        "--noconfirm",
         "--onedir",
         "--add-data", f"{project_dir / 'styles.py'};.",
         str(project_dir / "main.py")

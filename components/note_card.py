@@ -196,16 +196,34 @@ class NoteCard(QFrame):
         return "  •  ".join(badges)
 
     def _clean_excerpt(self, markdown_text: str) -> str:
-        """Strip markdown syntax to create a clean excerpt."""
+        """Strip markdown syntax to create a clean, elegant note excerpt."""
         if not markdown_text:
             return "Empty note"
-        # Remove headers, bullets, code fences
-        text = re.sub(r'#+\s*', '', markdown_text)
-        text = re.sub(r'[*_`~]', '', text)
+
+        # Remove image and media links (already displayed in media badges row)
+        text = re.sub(r'!\[.*?\]\(.*?\)', '', markdown_text)
+        text = re.sub(r'[🎵🎥]\s*\[.*?\]\(.*?\)', '', text)
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+
+        # Strip code block fences
+        text = re.sub(r'```[\s\S]*?```', '', text)
+
+        # Clean task checklist checkboxes into readable bullets
+        text = re.sub(r'^\s*[-*+]\s*\[[ xX]\]\s*', '• ', text, flags=re.MULTILINE)
+
+        # Normalize bullet markers
+        text = re.sub(r'^\s*[-*+]\s+', '• ', text, flags=re.MULTILINE)
+
+        # Remove headers and inline formatting characters
+        text = re.sub(r'#+\s*', '', text)
+        text = re.sub(r'[*_`~<>]', '', text)
+
         lines = [line.strip() for line in text.splitlines() if line.strip()]
-        clean = " ".join(lines)
-        return clean[:90] + ("..." if len(clean) > 90 else "")
+        if not lines:
+            return "Empty note"
+
+        clean = "  ".join(lines)
+        return clean[:95] + ("..." if len(clean) > 95 else "")
 
     def _format_date(self, iso_date: str) -> str:
         try:
