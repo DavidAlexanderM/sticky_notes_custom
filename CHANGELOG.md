@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.5.7] - 2026-09-20
+
+### Added & Improved
+- **Official Windows Installer (`StickyNotes_Setup_v1.5.7.exe`):**
+  - Integrated **Inno Setup** compiler script (`installer.iss`) into the CI/CD pipeline.
+  - Non-administrative per-user installation target (`%LOCALAPPDATA%\Programs\StickyNotes`) that completely avoids Windows UAC administrator elevation prompts.
+  - Creates Start Menu entry, optional Desktop shortcut, and registers in Windows Settings (Installed Apps) with version info, publisher, and 1-click uninstaller.
+  - Multi-language installer support (English and Spanish).
+- **Embedded Multi-Resolution Windows Icon:**
+  - Designed and generated multi-size application icon (`assets/icon.ico`: 16, 24, 32, 48, 64, 128, 256 px).
+  - Embedded into `StickyNotes.exe` via PyInstaller and registered in the installer and Start Menu.
+
+---
+
 ## [1.5.6] - 2026-09-20
 
 ### Added & Improved
