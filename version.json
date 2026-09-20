@@ -1,13 +1,13 @@
 {
-  "version": "1.5.8",
-  "tag_name": "v1.5.8",
+  "version": "1.6.0",
+  "tag_name": "v1.6.0",
   "published_at": "latest",
-  "html_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/tag/v1.5.8",
-  "body": "Sticky Notes v1.5.8 release for Windows.",
-  "asset_name": "StickyNotes_v1.5.8_Windows.zip",
+  "html_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/tag/v1.6.0",
+  "body": "Sticky Notes v1.6.0 release for Windows.",
+  "asset_name": "StickyNotes_v1.6.0_Windows.zip",
   "asset_size": 0,
-  "browser_download_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.5.8/StickyNotes_v1.5.8_Windows.zip",
-  "installer_name": "StickyNotes_Setup_v1.5.8.exe",
+  "browser_download_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.6.0/StickyNotes_v1.6.0_Windows.zip",
+  "installer_name": "StickyNotes_Setup_v1.6.0.exe",
   "installer_size": 0,
-  "installer_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.5.8/StickyNotes_Setup_v1.5.8.exe"
+  "installer_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.6.0/StickyNotes_Setup_v1.6.0.exe"
 }

@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.0] - 2026-09-20
+
+### Added & Improved
+- **Project Stacks & Note Collections:**
+  - Multi-project database architecture with schema migration: organizes notes into separate project stacks (e.g. "Doctora", "Research", "Work", "Personal") with zero data loss for existing notes.
+  - Active project stack persistence: application remembers the last active stack and reopens directly to that collection on startup.
+  - Header Project Switcher dropdown: 1-click switching with live note counts, colored stack accents, and "All Notes" global overview mode.
+  - Project Management Dialog (`components/project_dialog.py`): create new project stacks with custom accent colors, rename existing stacks, and safely delete projects with automatic reassignment of all notes to "General Notes".
+  - Move Notes across Stacks: 1-click stack reassignment via NoteCard context menu (`Move to Stack`) and batch reassignment across multi-selected notes via the bottom action bar.
+  - Note Editor Stack Badge: in-editor stack indicator and quick-switcher allowing seamless project reassignment while editing notes.
+  - Comprehensive automated test suite (`tests/test_projects.py`) covering all CRUD operations, filtering, safe deletion, and UI interactions.
+
+---
+
 ## [1.5.8] - 2026-09-20
 
 ### Added & Improved

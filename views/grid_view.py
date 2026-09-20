@@ -18,6 +18,7 @@ try:
     from ..components.note_card import NoteCard
     from ..components.help_dialog import HelpAboutDialog
     from ..components.share_dialog import ShareNoteDialog
+    from ..components.project_dialog import NewProjectDialog, ManageProjectsDialog
     from ..styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from ..theme_manager import get_theme_manager
     from ..icons import get_themed_icon
@@ -26,6 +27,7 @@ except ImportError:
     from components.note_card import NoteCard
     from components.help_dialog import HelpAboutDialog
     from components.share_dialog import ShareNoteDialog
+    from components.project_dialog import NewProjectDialog, ManageProjectsDialog
     from styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from theme_manager import get_theme_manager
     from icons import get_themed_icon
@@ -45,6 +47,7 @@ class StickyNotesGridView(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.theme_mgr = get_theme_manager()
+        self.active_project_id = database.get_active_project_id()
         self.all_notes: List[dict] = []
         self.note_cards: List[NoteCard] = []
         self.selected_note_ids: Set[str] = set()
@@ -64,6 +67,13 @@ class StickyNotesGridView(QWidget):
         self.title_label = QLabel("My Notes", self)
         self.title_label.setObjectName("AppHeaderTitle")
         self.header_layout.addWidget(self.title_label)
+
+        # Project Stack Switcher Button
+        self.project_btn = QPushButton(self)
+        self.project_btn.setObjectName("ProjectSwitcherBtn")
+        self.project_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.project_btn.clicked.connect(self._show_project_menu)
+        self.header_layout.addWidget(self.project_btn)
 
         self.header_layout.addStretch()
 
@@ -170,6 +180,12 @@ class StickyNotesGridView(QWidget):
         self.select_all_btn.clicked.connect(self._select_all_notes)
         action_layout.addWidget(self.select_all_btn)
 
+        self.move_selected_btn = QPushButton(" Move to Stack", self.action_bar)
+        self.move_selected_btn.setObjectName("SelectModeButton")
+        self.move_selected_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.move_selected_btn.clicked.connect(self._show_batch_move_menu)
+        action_layout.addWidget(self.move_selected_btn)
+
         self.delete_selected_btn = QPushButton(" Delete Selected", self.action_bar)
         self.delete_selected_btn.setObjectName("DeleteSelectedButton")
         self.delete_selected_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -250,6 +266,161 @@ class StickyNotesGridView(QWidget):
         self.select_all_btn.setIcon(get_themed_icon("check", role="btn_text", theme=theme, size=15))
         self.delete_selected_btn.setIcon(get_themed_icon("trash", role="white", theme=theme, size=15))
         self.clear_selection_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=14))
+        if hasattr(self, 'move_selected_btn'):
+            self.move_selected_btn.setIcon(get_themed_icon("folder", role="btn_text", theme=theme, size=15))
+
+        self._update_project_button_label()
+
+    def _update_project_button_label(self):
+        """Updates the Project Switcher button label and styling based on active stack."""
+        theme = self.theme_mgr.current_theme
+        projects = database.get_all_projects()
+        all_count = sum(p.get("note_count", 0) for p in projects)
+        
+        if self.active_project_id == "all":
+            self.project_btn.setText(f" All Notes ({all_count}) ▾")
+            self.project_btn.setIcon(get_themed_icon("layers", role="btn_text", theme=theme, size=15))
+            self.project_btn.setToolTip("Active Collection: All Notes\nClick to switch project stack")
+            return
+
+        active_proj = next((p for p in projects if p["id"] == self.active_project_id), None)
+        if not active_proj:
+            # Project was deleted or invalid; fallback to default
+            self.active_project_id = "default"
+            database.set_active_project_id("default")
+            active_proj = next((p for p in projects if p["id"] == "default"), None)
+
+        name = active_proj["name"] if active_proj else "General Notes"
+        count = active_proj.get("note_count", 0) if active_proj else 0
+        self.project_btn.setText(f" {name} ({count}) ▾")
+        self.project_btn.setIcon(get_themed_icon("folder", role="btn_text", theme=theme, size=15))
+        self.project_btn.setToolTip(f"Active Stack: {name}\nClick to switch project stack")
+
+    def _show_project_menu(self):
+        """Displays dropdown menu listing all project stacks with note counts and management options."""
+        menu = QMenu(self)
+        theme = self.theme_mgr.current_theme
+        is_dark = self.theme_mgr.is_dark_mode()
+        try:
+            from ..styles import THEME_PALETTES
+        except ImportError:
+            from styles import THEME_PALETTES
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {pal.get('menu_bg', '#1E1F20' if is_dark else '#FFFFFF')};
+                border: 1px solid {pal.get('border', '#444746' if is_dark else '#CBD5E1')};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 6px 18px 6px 10px;
+                font-size: 13px;
+                border-radius: 4px;
+                color: {pal.get('text_primary', '#E3E3E3' if is_dark else '#0F172A')};
+            }}
+            QMenu::item:selected {{
+                background-color: {pal.get('btn_hover', '#333537' if is_dark else '#F1F5F9')};
+                color: {pal.get('accent', '#8AB4F8' if is_dark else '#2563EB')};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background-color: {pal.get('border_subtle', '#2D2E30' if is_dark else '#E2E8F0')};
+                margin: 4px 6px;
+            }}
+        """)
+
+        projects = database.get_all_projects()
+        all_count = sum(p.get("note_count", 0) for p in projects)
+
+        # "All Notes" option
+        act_all = menu.addAction(get_themed_icon("layers", role="btn_text", theme=theme, size=15), f"All Notes ({all_count})")
+        act_all.setCheckable(True)
+        act_all.setChecked(self.active_project_id == "all")
+
+        menu.addSeparator()
+
+        # Project items
+        project_actions = {}
+        for p in projects:
+            p_id = p["id"]
+            p_name = p["name"]
+            p_count = p.get("note_count", 0)
+            act = menu.addAction(get_themed_icon("folder", role="btn_text", theme=theme, size=15), f"{p_name} ({p_count})")
+            act.setCheckable(True)
+            act.setChecked(self.active_project_id == p_id)
+            project_actions[act] = p_id
+
+        menu.addSeparator()
+
+        # New Project Stack
+        act_new = menu.addAction(get_themed_icon("plus", role="btn_text", theme=theme, size=15), "New Project Stack...")
+        # Manage Project Stacks
+        act_manage = menu.addAction("⚙️ Manage Stacks...")
+
+        pos = self.project_btn.mapToGlobal(self.project_btn.rect().bottomLeft())
+        action = menu.exec(pos)
+
+        if action == act_all:
+            self._switch_active_project("all")
+        elif action in project_actions:
+            self._switch_active_project(project_actions[action])
+        elif action == act_new:
+            self._open_new_project_dialog()
+        elif action == act_manage:
+            self._open_manage_projects_dialog()
+
+    def _switch_active_project(self, project_id: str):
+        self.active_project_id = project_id
+        database.set_active_project_id(project_id)
+        self._update_project_button_label()
+        self.load_notes()
+
+    def _open_new_project_dialog(self):
+        dlg = NewProjectDialog(self)
+        if dlg.exec() and dlg.created_project_id:
+            self._switch_active_project(dlg.created_project_id)
+
+    def _open_manage_projects_dialog(self):
+        dlg = ManageProjectsDialog(self)
+        dlg.projects_changed.connect(self._on_projects_changed)
+        dlg.exec()
+        self._on_projects_changed()
+
+    def _on_projects_changed(self):
+        projects = database.get_all_projects()
+        p_ids = {p["id"] for p in projects}
+        if self.active_project_id != "all" and self.active_project_id not in p_ids:
+            self.active_project_id = "default"
+            database.set_active_project_id("default")
+        self._update_project_button_label()
+        self.load_notes()
+
+    def _show_batch_move_menu(self):
+        if not self.selected_note_ids:
+            return
+        menu = QMenu(self)
+        theme = self.theme_mgr.current_theme
+        projects = database.get_all_projects()
+        project_actions = {}
+        for p in projects:
+            p_id = p["id"]
+            p_name = p["name"]
+            act = menu.addAction(get_themed_icon("folder", role="btn_text", theme=theme, size=15), f"Move to {p_name}")
+            project_actions[act] = p_id
+
+        pos = self.move_selected_btn.mapToGlobal(self.move_selected_btn.rect().topLeft())
+        action = menu.exec(pos)
+        if action in project_actions:
+            target_pid = project_actions[action]
+            database.move_notes_to_project(list(self.selected_note_ids), target_pid)
+            self.selected_note_ids.clear()
+            self.load_notes()
+
+    def _on_card_move_to_project(self, note_id: str, project_id: str):
+        database.move_notes_to_project([note_id], project_id)
+        self.load_notes()
 
     def _show_theme_context_menu(self, pos):
         """Right-click menu allowing direct selection of System/Dark/Light/Sepia themes."""
@@ -316,7 +487,8 @@ class StickyNotesGridView(QWidget):
 
     def load_notes(self):
         """Reloads notes from database and refreshes view."""
-        self.all_notes = database.get_all_notes()
+        self.all_notes = database.get_all_notes(self.active_project_id)
+        self._update_project_button_label()
         self._filter_and_render_notes()
 
     def _filter_and_render_notes(self):
@@ -393,6 +565,7 @@ class StickyNotesGridView(QWidget):
             card.share_requested.connect(self._on_card_share_requested)
             card.delete_requested.connect(self._on_card_delete_requested)
             card.selection_toggled.connect(self._on_card_selection_toggled)
+            card.move_to_project_requested.connect(self._on_card_move_to_project)
             
             self.grid_layout.addWidget(card, row, col)
             self.note_cards.append(card)
@@ -584,7 +757,8 @@ class StickyNotesGridView(QWidget):
     def _create_new_note(self):
         """Creates an untitled note and immediately switches to edit mode."""
         initial_color = self.current_color_filter or "#FFF9C4"
-        note_id = database.create_note(title="Untitled Note", content="", color_hex=initial_color)
+        pid = self.active_project_id if self.active_project_id != "all" else "default"
+        note_id = database.create_note(title="Untitled Note", content="", color_hex=initial_color, project_id=pid)
         self.open_note_requested.emit(note_id)
 
     def _on_card_double_clicked(self, note_id: str):

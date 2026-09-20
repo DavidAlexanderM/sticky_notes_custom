@@ -106,6 +106,7 @@ class NoteEditorView(QWidget):
         self.setObjectName("EditorViewContainer")
         self.current_note_id = None
         self.current_color_hex = "#FFF9C4"
+        self.current_project_id = "default"
 
         # Timer for debounced auto-save
         self.autosave_timer = QTimer(self)
@@ -137,6 +138,14 @@ class NoteEditorView(QWidget):
         self.title_input.setPlaceholderText("Title")
         self.title_input.textChanged.connect(self._on_content_changed)
         header_layout.addWidget(self.title_input, 1)
+
+        # Project Stack Badge & Switcher Button
+        self.project_badge_btn = QPushButton(self)
+        self.project_badge_btn.setObjectName("EditorProjectBtn")
+        self.project_badge_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.project_badge_btn.setToolTip("Click to change project stack")
+        self.project_badge_btn.clicked.connect(self._show_editor_project_menu)
+        header_layout.addWidget(self.project_badge_btn)
 
         # Color Indicator & Selector Button
         self.color_badge = QPushButton(self)
@@ -329,7 +338,9 @@ class NoteEditorView(QWidget):
         self.title_input.setText(note.get("title", ""))
         self.editor.setPlainText(note.get("content", ""))
         self.current_color_hex = note.get("color_hex", "#FFF9C4")
+        self.current_project_id = note.get("project_id", "default")
         self._update_color_badge()
+        self._update_editor_project_btn()
 
         self.title_input.blockSignals(False)
         self.editor.blockSignals(False)
@@ -450,6 +461,68 @@ class NoteEditorView(QWidget):
         if hasattr(self, 'close_player_btn'):
             self.close_player_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=16))
 
+        if hasattr(self, 'project_badge_btn'):
+            self._update_editor_project_btn()
+
+    def _update_editor_project_btn(self):
+        """Updates the project stack badge label and icon in editor header."""
+        theme = self.theme_mgr.current_theme
+        projects = database.get_all_projects()
+        p = next((proj for proj in projects if proj["id"] == self.current_project_id), None)
+        name = p["name"] if p else "General Notes"
+        self.project_badge_btn.setText(f" {name} ▾")
+        self.project_badge_btn.setIcon(get_themed_icon("folder", role="btn_text", theme=theme, size=14))
+
+    def _show_editor_project_menu(self):
+        """Shows menu allowing user to change the active note's project stack."""
+        if not self.current_note_id:
+            return
+        menu = QMenu(self)
+        theme = self.theme_mgr.current_theme
+        is_dark = self.theme_mgr.is_dark_mode()
+        try:
+            from ..styles import THEME_PALETTES
+        except ImportError:
+            from styles import THEME_PALETTES
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {pal.get('menu_bg', '#1E1F20' if is_dark else '#FFFFFF')};
+                border: 1px solid {pal.get('border', '#444746' if is_dark else '#CBD5E1')};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 6px 18px 6px 10px;
+                font-size: 13px;
+                border-radius: 4px;
+                color: {pal.get('text_primary', '#E3E3E3' if is_dark else '#0F172A')};
+            }}
+            QMenu::item:selected {{
+                background-color: {pal.get('btn_hover', '#333537' if is_dark else '#F1F5F9')};
+                color: {pal.get('accent', '#8AB4F8' if is_dark else '#2563EB')};
+            }}
+        """)
+
+        projects = database.get_all_projects()
+        project_actions = {}
+        for p in projects:
+            p_id = p["id"]
+            p_name = p["name"]
+            is_cur = (p_id == self.current_project_id)
+            act = menu.addAction(get_themed_icon("folder", role="btn_text", theme=theme, size=15), f"{p_name}" + ("  ✓" if is_cur else ""))
+            act.setCheckable(True)
+            act.setChecked(is_cur)
+            project_actions[act] = p_id
+
+        pos = self.project_badge_btn.mapToGlobal(self.project_badge_btn.rect().bottomLeft())
+        action = menu.exec(pos)
+        if action in project_actions:
+            self.current_project_id = project_actions[action]
+            database.update_note(self.current_note_id, project_id=self.current_project_id)
+            self._update_editor_project_btn()
+
     def _show_theme_context_menu(self, pos):
         """Right-click menu allowing direct selection of System/Dark/Light/Sepia themes."""
         menu = QMenu(self)
@@ -539,7 +612,7 @@ class NoteEditorView(QWidget):
             return
         title = self.title_input.text().strip() or "Untitled Note"
         content = self.editor.toPlainText()
-        database.update_note(self.current_note_id, title=title, content=content, color_hex=self.current_color_hex)
+        database.update_note(self.current_note_id, title=title, content=content, color_hex=self.current_color_hex, project_id=self.current_project_id)
 
     def _on_back_clicked(self):
         self._stop_and_hide_audio_player()

@@ -29,6 +29,7 @@ class NoteCard(QFrame):
     duplicate_requested = Signal(str)    # Emits note_id
     share_requested = Signal(str)        # Emits note_id
     selection_toggled = Signal(str, bool) # Emits (note_id, is_selected)
+    move_to_project_requested = Signal(str, str) # Emits (note_id, target_project_id)
 
     def __init__(self, note: dict, parent=None):
         super().__init__(parent)
@@ -359,6 +360,29 @@ class NoteCard(QFrame):
         act_edit = menu.addAction(get_icon("edit", color=text_color, size=16), "Open Note")
         act_dup = menu.addAction(get_icon("copy", color=text_color, size=16), "Duplicate")
         act_color = menu.addAction(get_icon("palette", color=text_color, size=16), "Change Color")
+
+        # Move to Project Stack submenu
+        project_actions = {}
+        try:
+            try:
+                from .. import database
+            except ImportError:
+                import database
+            projects = database.get_all_projects()
+            if projects:
+                move_menu = menu.addMenu(get_icon("folder", color=text_color, size=16), "Move to Stack")
+                current_pid = self.note.get("project_id", "default")
+                for p in projects:
+                    p_id = p["id"]
+                    p_name = p["name"]
+                    is_cur = (p_id == current_pid)
+                    item_text = f"✓ {p_name} (Current)" if is_cur else p_name
+                    act_p = move_menu.addAction(item_text)
+                    act_p.setEnabled(not is_cur)
+                    project_actions[act_p] = p_id
+        except Exception:
+            pass
+
         act_share = menu.addAction(get_icon("share", color=text_color, size=16), "Share / Export")
         menu.addSeparator()
         act_delete = menu.addAction(get_icon("trash", color="#EF4444", size=16), "Delete Note")
@@ -370,6 +394,8 @@ class NoteCard(QFrame):
             self.duplicate_requested.emit(self.note_id)
         elif action == act_color:
             self._show_color_flyout(global_pos)
+        elif action in project_actions:
+            self.move_to_project_requested.emit(self.note_id, project_actions[action])
         elif action == act_share:
             self.share_requested.emit(self.note_id)
         elif action == act_delete:

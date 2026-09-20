@@ -225,6 +225,23 @@ QPushButton#EditorHeaderBtn:hover {{
     border-color: {pal["accent"]};
 }}
 
+/* Project Stack Switcher */
+QPushButton#ProjectSwitcherBtn, QPushButton#EditorProjectBtn {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["btn_text"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+}}
+
+QPushButton#ProjectSwitcherBtn:hover, QPushButton#EditorProjectBtn:hover {{
+    background-color: {pal["btn_hover"]};
+    border-color: {pal["accent"]};
+    color: {pal["accent"]};
+}}
+
 /* In-App Audio Player */
 QFrame#AudioPlayerFrame {{
     background-color: {pal["bg_surface"]};
