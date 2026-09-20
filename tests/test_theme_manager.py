@@ -46,15 +46,32 @@ class TestThemeManager(unittest.TestCase):
         self.assertIn("light", emitted)
 
     def test_toggle_theme(self):
-        """Verify toggle_theme alternates between light and dark."""
-        self.mgr.set_theme("light")
+        """Verify toggle_theme cycles through dark, light, and system."""
+        self.mgr.set_theme("dark")
         new_theme = self.mgr.toggle_theme()
-        self.assertEqual(new_theme, "dark")
-        self.assertEqual(self.mgr.current_theme, "dark")
+        self.assertEqual(new_theme, "light")
 
+        # From light, toggle returns to system (auto)
         new_theme2 = self.mgr.toggle_theme()
-        self.assertEqual(new_theme2, "light")
-        self.assertEqual(self.mgr.current_theme, "light")
+        self.assertTrue(self.mgr.is_system_theme())
+
+    def test_realtime_os_theme_detection(self):
+        """Verify check_os_theme_change emits theme_changed when OS switches."""
+        emitted = []
+        self.mgr.set_theme("system")
+        self.mgr.theme_changed.connect(lambda t: emitted.append(t))
+
+        # Simulate OS theme switch
+        self.mgr._last_detected_os_theme = "light"
+        import theme_manager
+        orig_detect = theme_manager.detect_os_theme
+        try:
+            theme_manager.detect_os_theme = lambda: "dark"
+            self.mgr.check_os_theme_change()
+            self.assertEqual(self.mgr.current_theme, "dark")
+            self.assertIn("dark", emitted)
+        finally:
+            theme_manager.detect_os_theme = orig_detect
 
     def test_stylesheet_generation(self):
         """Verify QSS stylesheets are generated for each theme."""

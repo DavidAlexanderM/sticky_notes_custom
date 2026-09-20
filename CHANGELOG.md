@@ -17,6 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.4] - 2026-09-20
+
+### Added & Improved
+- **Real-Time Automatic OS Theme Detection:**
+  - Implemented live Windows OS theme monitoring in `ThemeManager` using a dual-layer strategy: native Windows `WM_SETTINGCHANGE` event filter combined with an infallible background polling timer.
+  - Sticky Notes now switches between Dark and Light mode in real-time as soon as the user changes Windows Settings.
+  - Added tri-state theme cycling: `System (Auto) -> Dark -> Light -> System (Auto)`.
+  - Added right-click theme switcher menu to `theme_btn` on both Grid and Editor views, giving 1-click access to *Follow Windows Theme (Auto)*, *Dark Theme*, *Light Theme*, and *Sepia Theme*.
+  - Reset default preference to `"system"`.
+- **Empowered Multi-App & OS Sharing Center (`ShareNoteDialog`):**
+  - Upgraded Note Sharing into a rich, dedicated modal dialog accessible from card menus, palette flyout, and the editor header.
+  - One-click transmission to **Email** (Outlook / Windows Mail / Thunderbird), **WhatsApp** (Desktop / Web), **Telegram**, **Facebook**, and **X (Twitter)**.
+  - Integrated fast clipboard actions: Copy Markdown and Copy Plain Text (with automatic regex markdown stripping).
+  - Export to Markdown (`.md`) and styled standalone HTML (`.html`) files.
+  - Note metadata preview featuring word count, character count, and formatted text snippet.
+
+---
+
 ## [1.5.3] - 2026-09-20
 
 ### Added & Improved

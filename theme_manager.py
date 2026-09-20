@@ -1,6 +1,7 @@
 """
 theme_manager.py - Centralized Theme Management System for Sticky Notes.
-Supports Light, Dark, and Sepia themes with persistent settings and dynamic signal dispatching.
+Supports Light, Dark, and Sepia themes with persistent settings, dynamic signal dispatching,
+and real-time automatic synchronization with the Windows OS theme.
 """
 
 import os
@@ -9,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QTimer, QCoreApplication, QAbstractNativeEventFilter
 
 
 def get_preferences_path() -> Path:
@@ -39,10 +40,30 @@ def detect_os_theme() -> str:
     return "light"
 
 
+class _WindowsThemeEventFilter(QAbstractNativeEventFilter):
+    """Listens for WM_SETTINGCHANGE (0x001A) on Windows to detect instant OS theme changes."""
+    def __init__(self, theme_manager: 'ThemeManager'):
+        super().__init__()
+        self.theme_mgr = theme_manager
+
+    def nativeEventFilter(self, eventType, message):
+        if eventType in ("windows_generic_MSG", "windows_dispatcher_MSG"):
+            try:
+                import ctypes
+                from ctypes import wintypes
+                msg = wintypes.MSG.from_address(int(message))
+                # 0x001A = WM_SETTINGCHANGE
+                if msg.message == 0x001A:
+                    self.theme_mgr.check_os_theme_change()
+            except Exception:
+                pass
+        return False, 0
+
+
 class ThemeManager(QObject):
     """
-    Manages application theme state, stylesheet generation, and persistent preferences.
-    Supports system OS detection, Light, Dark, and Sepia themes.
+    Manages application theme state, stylesheet generation, persistent preferences,
+    and real-time automatic synchronization with the host operating system.
     """
     theme_changed = Signal(str)  # Emits effective theme name ('light', 'dark', 'sepia')
 
@@ -51,8 +72,29 @@ class ThemeManager(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._preferred_theme = "system"
-        self._current_theme = detect_os_theme()
+        self._last_detected_os_theme = detect_os_theme()
+        self._current_theme = self._last_detected_os_theme
         self._load_preferences()
+
+        # Infallible 1.5s background polling fallback for headless / registry changes
+        self._os_monitor_timer = QTimer(self)
+        self._os_monitor_timer.setInterval(1500)
+        self._os_monitor_timer.timeout.connect(self.check_os_theme_change)
+        self._os_monitor_timer.start()
+
+        self._native_filter: Optional[_WindowsThemeEventFilter] = None
+        self._install_native_listener()
+
+    def _install_native_listener(self):
+        """Attaches native event filter to QCoreApplication if running on Windows."""
+        if sys.platform == "win32":
+            app = QCoreApplication.instance()
+            if app and not self._native_filter:
+                try:
+                    self._native_filter = _WindowsThemeEventFilter(self)
+                    app.installNativeEventFilter(self._native_filter)
+                except Exception:
+                    pass
 
     def _load_preferences(self):
         """Loads saved theme preference from disk."""
@@ -78,11 +120,20 @@ class ThemeManager(QObject):
         except Exception:
             pass
 
+    def check_os_theme_change(self):
+        """Checks if the operating system theme has changed and notifies subscribers."""
+        detected = detect_os_theme()
+        if detected != self._last_detected_os_theme:
+            self._last_detected_os_theme = detected
+            if self._preferred_theme == "system":
+                self._current_theme = detected
+                self.theme_changed.emit(self.current_theme)
+
     @property
     def current_theme(self) -> str:
         """Returns the active rendered theme ('light', 'dark', 'sepia')."""
         if self._preferred_theme == "system":
-            return detect_os_theme()
+            return self._last_detected_os_theme
         return self._current_theme
 
     @property
@@ -111,28 +162,39 @@ class ThemeManager(QObject):
             self.theme_changed.emit(self.current_theme)
 
     def toggle_theme(self) -> str:
-        """Toggles between light and dark themes and returns new effective theme name."""
-        new_theme = "light" if self.is_dark_mode() else "dark"
-        self.set_theme(new_theme)
-        return new_theme
+        """
+        Cycles theme state: System (Auto) -> Dark -> Light -> System (Auto).
+        Returns the new effective rendered theme name.
+        """
+        if self._preferred_theme == "system":
+            new_pref = "light" if self.is_dark_mode() else "dark"
+        elif self._preferred_theme == "dark":
+            new_pref = "light"
+        elif self._preferred_theme == "light":
+            new_pref = "system"
+        else:
+            new_pref = "system"
+
+        self.set_theme(new_pref)
+        return self.current_theme
 
     def get_app_stylesheet(self) -> str:
         """Generates full QSS for the current active theme."""
         try:
             from styles import generate_app_stylesheet
-            return generate_app_stylesheet(self._current_theme)
+            return generate_app_stylesheet(self.current_theme)
         except ImportError:
             from .styles import generate_app_stylesheet
-            return generate_app_stylesheet(self._current_theme)
+            return generate_app_stylesheet(self.current_theme)
 
     def get_markdown_css(self) -> str:
         """Generates Markdown preview CSS matching the active theme."""
         try:
             from styles import get_markdown_preview_css
-            return get_markdown_preview_css(self._current_theme)
+            return get_markdown_preview_css(self.current_theme)
         except ImportError:
             from .styles import get_markdown_preview_css
-            return get_markdown_preview_css(self._current_theme)
+            return get_markdown_preview_css(self.current_theme)
 
 
 # Global singleton instance

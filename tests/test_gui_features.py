@@ -24,6 +24,7 @@ from views.grid_view import StickyNotesGridView
 from components.note_card import NoteCard
 from components.color_picker_flyout import ColorPickerFlyout
 from components.help_dialog import HelpAboutDialog
+from components.share_dialog import ShareNoteDialog, strip_markdown
 from theme_manager import detect_os_theme, get_theme_manager
 from main import MainWindow
 
@@ -230,6 +231,29 @@ def test():
         """Verify detect_os_theme returns a valid theme string ('light' or 'dark')."""
         detected = detect_os_theme()
         self.assertIn(detected, ["light", "dark"])
+
+    def test_share_dialog_and_plain_text_stripping(self):
+        """Verify ShareNoteDialog initializes and clean plain-text stripping operates properly."""
+        md_sample = "# Meeting Notes\n\n**Action Items:**\n- [ ] Fix bug\n- [x] Write tests\n\nCheck [link](https://example.com) and `code`."
+        plain = strip_markdown(md_sample)
+        self.assertNotIn("#", plain)
+        self.assertNotIn("**", plain)
+        self.assertNotIn("`", plain)
+        self.assertIn("Meeting Notes", plain)
+        self.assertIn("https://example.com", plain)
+
+        # Dialog instantiation and button availability
+        dialog = ShareNoteDialog("Project Kickoff", md_sample)
+        self.assertIsNotNone(dialog.btn_mail)
+        self.assertIsNotNone(dialog.btn_whatsapp)
+        self.assertIsNotNone(dialog.btn_telegram)
+        self.assertIsNotNone(dialog.btn_facebook)
+        self.assertIsNotNone(dialog.btn_x)
+        self.assertIsNotNone(dialog.btn_copy_md)
+        self.assertIsNotNone(dialog.btn_copy_txt)
+        self.assertIsNotNone(dialog.btn_save_md)
+        self.assertIsNotNone(dialog.btn_save_html)
+        dialog.close()
 
 
 if __name__ == "__main__":

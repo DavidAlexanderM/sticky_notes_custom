@@ -14,6 +14,7 @@ try:
     from ..components.format_toolbar import FormatToolbar
     from ..components.voice_recorder_dialog import VoiceRecorderDialog
     from ..components.help_dialog import HelpAboutDialog
+    from ..components.share_dialog import ShareNoteDialog
     from ..media_manager import copy_to_attachments, get_attachments_dir
     from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from ..security import is_safe_url, sanitize_markdown_html
@@ -26,6 +27,7 @@ except ImportError:
     from components.format_toolbar import FormatToolbar
     from components.voice_recorder_dialog import VoiceRecorderDialog
     from components.help_dialog import HelpAboutDialog
+    from components.share_dialog import ShareNoteDialog
     from media_manager import copy_to_attachments, get_attachments_dir
     from styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from security import is_safe_url, sanitize_markdown_html
@@ -203,6 +205,8 @@ class NoteEditorView(QWidget):
         self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.theme_btn.setToolTip("Toggle Light / Dark Theme")
         self.theme_btn.clicked.connect(self._toggle_theme)
+        self.theme_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.theme_btn.customContextMenuRequested.connect(self._show_theme_context_menu)
         header_layout.addWidget(self.theme_btn)
 
         main_layout.addLayout(header_layout)
@@ -428,9 +432,11 @@ class NoteEditorView(QWidget):
             self.help_btn.setIcon(get_themed_icon("help_circle", role="btn_text", theme=theme, size=18))
         if hasattr(self, 'theme_btn'):
             is_dark = self.theme_mgr.is_dark_mode()
+            is_auto = self.theme_mgr.is_system_theme()
+            mode_desc = f"Auto (Following Windows: {'Dark' if is_dark else 'Light'})" if is_auto else f"{'Dark' if is_dark else 'Light'} (Manual)"
             self.theme_btn.setText("")
             self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=18))
-            self.theme_btn.setToolTip(f"Theme: {'Dark' if is_dark else 'Light'} (Click to switch)")
+            self.theme_btn.setToolTip(f"Theme: {mode_desc}\nLeft-click: Cycle theme\nRight-click: Choose theme mode")
 
         # Audio player buttons
         if hasattr(self, 'play_pause_btn'):
@@ -440,6 +446,46 @@ class NoteEditorView(QWidget):
             self.external_play_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
         if hasattr(self, 'close_player_btn'):
             self.close_player_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=16))
+
+    def _show_theme_context_menu(self, pos):
+        """Right-click menu allowing direct selection of System/Dark/Light/Sepia themes."""
+        menu = QMenu(self)
+        theme = self.theme_mgr.current_theme
+        is_dark = self.theme_mgr.is_dark_mode()
+        is_auto = self.theme_mgr.is_system_theme()
+
+        act_auto = menu.addAction(get_themed_icon("monitor", role="btn_text", theme=theme, size=16), "Follow Windows Theme (Auto)")
+        act_auto.setCheckable(True)
+        act_auto.setChecked(is_auto)
+
+        menu.addSeparator()
+
+        act_dark = menu.addAction(get_themed_icon("moon", role="btn_text", theme=theme, size=16), "Dark Theme (Antigravity 2.0)")
+        act_dark.setCheckable(True)
+        act_dark.setChecked(not is_auto and is_dark)
+
+        act_light = menu.addAction(get_themed_icon("sun", role="btn_text", theme=theme, size=16), "Light Theme")
+        act_light.setCheckable(True)
+        act_light.setChecked(not is_auto and theme == "light")
+
+        act_sepia = menu.addAction("Sepia Theme")
+        act_sepia.setCheckable(True)
+        act_sepia.setChecked(not is_auto and theme == "sepia")
+
+        action = menu.exec(self.theme_btn.mapToGlobal(pos))
+        if action == act_auto:
+            self.theme_mgr.set_theme("system")
+        elif action == act_dark:
+            self.theme_mgr.set_theme("dark")
+        elif action == act_light:
+            self.theme_mgr.set_theme("light")
+        elif action == act_sepia:
+            self.theme_mgr.set_theme("sepia")
+
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(self.theme_mgr.get_app_stylesheet())
+        self._update_header_icons()
 
     def _open_help_dialog(self):
         """Displays the Help, Shortcuts, and About Dialog."""
@@ -536,50 +582,8 @@ class NoteEditorView(QWidget):
         self._auto_save()
         title = self.title_input.text().strip() or "Untitled Note"
         content = self.editor.toPlainText()
-
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #FFFFFF;
-                border: 1px solid rgba(0, 0, 0, 0.12);
-                border-radius: 8px;
-                padding: 6px;
-            }
-            QMenu::item {
-                padding: 6px 16px;
-                font-size: 13px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #F1F5F9;
-                color: #0067C0;
-            }
-        """)
-
-        act_copy = menu.addAction("📋 Copy Markdown to Clipboard")
-        act_export_md = menu.addAction("📄 Export as .md file")
-        act_export_html = menu.addAction("🌐 Export as .html file")
-
-        action = menu.exec(QCursor.pos())
-        if action == act_copy:
-            clipboard_text = f"# {title}\n\n{content}"
-            QApplication.clipboard().setText(clipboard_text)
-            QMessageBox.information(self, "Copied", "Note copied to clipboard!")
-        elif action == act_export_md:
-            safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
-            file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as Markdown", f"{safe_title}.md", "Markdown Files (*.md)")
-            if file_path:
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(f"# {title}\n\n{content}")
-        elif action == act_export_html:
-            safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
-            file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as HTML", f"{safe_title}.html", "HTML Files (*.html)")
-            if file_path:
-                html_body = markdown2.markdown(content, extras=["fenced-code-blocks", "tables", "task_list", "strike"])
-                safe_html_body = sanitize_markdown_html(html_body)
-                full_html = f"<html><head>{MARKDOWN_PREVIEW_CSS}</head><body>{safe_html_body}</body></html>"
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(full_html)
+        dialog = ShareNoteDialog(title, content, self)
+        dialog.exec()
 
     def _on_add_picture(self):
         file_path, _ = QFileDialog.getOpenFileName(

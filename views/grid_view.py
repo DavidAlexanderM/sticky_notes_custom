@@ -17,6 +17,7 @@ import markdown2
 try:
     from ..components.note_card import NoteCard
     from ..components.help_dialog import HelpAboutDialog
+    from ..components.share_dialog import ShareNoteDialog
     from ..styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from ..theme_manager import get_theme_manager
     from ..icons import get_themed_icon
@@ -24,6 +25,7 @@ try:
 except ImportError:
     from components.note_card import NoteCard
     from components.help_dialog import HelpAboutDialog
+    from components.share_dialog import ShareNoteDialog
     from styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from theme_manager import get_theme_manager
     from icons import get_themed_icon
@@ -80,6 +82,8 @@ class StickyNotesGridView(QWidget):
         self.theme_btn.setFixedSize(36, 36)
         self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.theme_btn.clicked.connect(self._toggle_theme)
+        self.theme_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.theme_btn.customContextMenuRequested.connect(self._show_theme_context_menu)
         header_layout.addWidget(self.theme_btn)
 
         # "+ New Note" Button
@@ -192,11 +196,13 @@ class StickyNotesGridView(QWidget):
         """Updates icons across the header and action buttons based on current theme (Icon-only theme switcher)."""
         theme = self.theme_mgr.current_theme
         is_dark = self.theme_mgr.is_dark_mode()
+        is_auto = self.theme_mgr.is_system_theme()
         
-        # Icon-only theme button
+        # Icon-only theme button with clear state feedback
+        mode_desc = f"Auto (Following Windows: {'Dark' if is_dark else 'Light'})" if is_auto else f"{'Dark' if is_dark else 'Light'} (Manual)"
         self.theme_btn.setText("")
         self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=18))
-        self.theme_btn.setToolTip(f"Theme: {'Dark' if is_dark else 'Light'} (Click to switch)")
+        self.theme_btn.setToolTip(f"Theme: {mode_desc}\nLeft-click: Cycle theme\nRight-click: Choose theme mode")
 
         # Help button
         self.help_btn.setIcon(get_themed_icon("help_circle", role="btn_text", theme=theme, size=18))
@@ -206,6 +212,46 @@ class StickyNotesGridView(QWidget):
         self.select_all_btn.setIcon(get_themed_icon("check", role="btn_text", theme=theme, size=15))
         self.delete_selected_btn.setIcon(get_themed_icon("trash", role="white", theme=theme, size=15))
         self.clear_selection_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=14))
+
+    def _show_theme_context_menu(self, pos):
+        """Right-click menu allowing direct selection of System/Dark/Light/Sepia themes."""
+        menu = QMenu(self)
+        theme = self.theme_mgr.current_theme
+        is_dark = self.theme_mgr.is_dark_mode()
+        is_auto = self.theme_mgr.is_system_theme()
+
+        act_auto = menu.addAction(get_themed_icon("monitor", role="btn_text", theme=theme, size=16), "Follow Windows Theme (Auto)")
+        act_auto.setCheckable(True)
+        act_auto.setChecked(is_auto)
+
+        menu.addSeparator()
+
+        act_dark = menu.addAction(get_themed_icon("moon", role="btn_text", theme=theme, size=16), "Dark Theme (Antigravity 2.0)")
+        act_dark.setCheckable(True)
+        act_dark.setChecked(not is_auto and is_dark)
+
+        act_light = menu.addAction(get_themed_icon("sun", role="btn_text", theme=theme, size=16), "Light Theme")
+        act_light.setCheckable(True)
+        act_light.setChecked(not is_auto and theme == "light")
+
+        act_sepia = menu.addAction("Sepia Theme")
+        act_sepia.setCheckable(True)
+        act_sepia.setChecked(not is_auto and theme == "sepia")
+
+        action = menu.exec(self.theme_btn.mapToGlobal(pos))
+        if action == act_auto:
+            self.theme_mgr.set_theme("system")
+        elif action == act_dark:
+            self.theme_mgr.set_theme("dark")
+        elif action == act_light:
+            self.theme_mgr.set_theme("light")
+        elif action == act_sepia:
+            self.theme_mgr.set_theme("sepia")
+
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(self.theme_mgr.get_app_stylesheet())
+        self._update_theme_btn_label()
 
     def _toggle_theme(self):
         self.theme_mgr.toggle_theme()
@@ -525,31 +571,8 @@ class StickyNotesGridView(QWidget):
         
         title = note.get("title") or "Untitled Note"
         content = note.get("content") or ""
-
-        menu = QMenu(self)
-        act_copy = menu.addAction("📋 Copy Markdown to Clipboard")
-        act_export_md = menu.addAction("📄 Export as .md file")
-        act_export_html = menu.addAction("🌐 Export as .html file")
-
-        action = menu.exec(QCursor.pos())
-        if action == act_copy:
-            clipboard_text = f"# {title}\n\n{content}"
-            QApplication.clipboard().setText(clipboard_text)
-            QMessageBox.information(self, "Copied", "Note copied to clipboard!")
-        elif action == act_export_md:
-            safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
-            file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as Markdown", f"{safe_title}.md", "Markdown Files (*.md)")
-            if file_path:
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(f"# {title}\n\n{content}")
-        elif action == act_export_html:
-            safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
-            file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as HTML", f"{safe_title}.html", "HTML Files (*.html)")
-            if file_path:
-                html_body = markdown2.markdown(content, extras=["fenced-code-blocks", "tables", "task_list", "strike"])
-                full_html = f"<html><head>{MARKDOWN_PREVIEW_CSS}</head><body>{html_body}</body></html>"
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(full_html)
+        dialog = ShareNoteDialog(title, content, self)
+        dialog.exec()
 
     def _on_card_delete_requested(self, note_id: str):
         confirm = QMessageBox.question(
