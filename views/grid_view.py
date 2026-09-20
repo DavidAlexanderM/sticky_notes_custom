@@ -160,7 +160,7 @@ class StickyNotesGridView(QWidget):
         self.sticky_icon_label.setObjectName("HeaderStickyIcon")
         self.sticky_icon_label.setFixedSize(30, 30)
         self.sticky_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sticky_icon_label.setToolTip("Sticky Notes")
+        self.sticky_icon_label.setToolTip("Danielle's Sticky Notes")
         ico_file = Path(__file__).resolve().parent.parent / "assets" / "icon.ico"
         if ico_file.exists():
             self.sticky_icon_label.setPixmap(QIcon(str(ico_file)).pixmap(26, 26))

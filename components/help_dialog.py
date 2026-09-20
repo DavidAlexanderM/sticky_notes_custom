@@ -27,7 +27,7 @@ except ImportError:
     from icons import get_themed_icon, get_icon
     from database import get_db_path
     from media_manager import get_attachments_dir
-    from version import __version__, AUTHOR, LICENSE, HOMEPAGE
+    from version import __version__, AUTHOR, LICENSE, HOMEPAGE, APP_NAME, APP_DESCRIPTION
     from components.update_dialog import UpdateDialog
 
 
@@ -38,7 +38,7 @@ class HelpAboutDialog(QDialog):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Sticky Notes - Help & About (v{__version__})")
+        self.setWindowTitle(f"{APP_NAME} - Help & About (v{__version__})")
         self.resize(680, 560)
         self.setMinimumSize(560, 440)
         
@@ -248,11 +248,11 @@ class HelpAboutDialog(QDialog):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(14)
 
-        title = QLabel(f"Sticky Notes v{__version__}")
+        title = QLabel(f"{APP_NAME} v{__version__}")
         title.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {pal['accent']};")
         layout.addWidget(title)
 
-        subtitle = QLabel("Minimal Single-Window Markdown Desktop App with Offline Local Storage.")
+        subtitle = QLabel(APP_DESCRIPTION)
         subtitle.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {pal['text_secondary']};")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
