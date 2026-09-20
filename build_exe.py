@@ -39,11 +39,13 @@ def build():
         print("[ERROR] PyInstaller build failed!")
         sys.exit(result.returncode)
 
+    from version import __version__
+
     app_folder = dist_dir / app_name
     print(f"[SUCCESS] Standalone app built at: {app_folder}")
 
     # Create a ready-to-gift ZIP file
-    zip_path = dist_dir / f"{app_name}_v1.0_Windows.zip"
+    zip_path = dist_dir / f"{app_name}_v{__version__}_Windows.zip"
     print(f"Creating portable gift ZIP: {zip_path.name} ...")
     
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:

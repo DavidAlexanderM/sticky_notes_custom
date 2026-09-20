@@ -15,11 +15,13 @@ from PySide6.QtGui import QIcon, QFont
 
 try:
     from . import database
+    from . import version
     from .styles import APP_STYLESHEET
     from .views.grid_view import StickyNotesGridView
     from .views.editor_view import NoteEditorView
 except ImportError:
     import database
+    import version
     from styles import APP_STYLESHEET
     from views.grid_view import StickyNotesGridView
     from views.editor_view import NoteEditorView
@@ -30,7 +32,7 @@ class MainWindow(QMainWindow):
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sticky Notes")
+        self.setWindowTitle(version.APP_TITLE)
         self.resize(880, 640)
         self.setMinimumSize(620, 460)
 
