@@ -22,15 +22,25 @@ A minimal, single-window Windows desktop application built with **Python** and *
 * **Right-Click Color Picker Flyout:**
   * Right-click any note to open a palette with 8 sticky colors (*Butter Yellow, Mint Green, Soft Coral, Lavender, Sky Blue, Warm Peach, Soft Pink, Slate Dark*).
   * Automatically adjusts text contrast for light/dark themes.
-* **Double-Click Note Editor:**
+* **Double-Click Note Editor & Formatting Toolbar:**
   * Double-click any note to open the editor.
   * **[← Back Arrow]** or `Esc` key returns to the board with auto-save.
-  * **Three Modes:**
+  * **Formatting Controls & Shortcuts:**
+    * **Bold** (`Ctrl+B`)
+    * **Italics** (`Ctrl+I`)
+    * **Underline** (`Ctrl+U`)
+    * **Strikethrough**, **Heading** (`##`), **Bullet Lists**, **Task Checklists**, and **Code Blocks**.
+  * **Multimedia Attachments:**
+    * 🖼 **Pictures:** Insert photos/images (`.png`, `.jpg`, `.gif`, `.webp`) with automatic responsive rendering and rounded corners.
+    * 🎙 **Voice Recordings & Audio:** Built-in live microphone recording with active timer, or attach existing `.mp3`/`.wav`/`.m4a` audio files.
+    * 🎥 **Videos:** Attach `.mp4`, `.mkv`, `.webm`, or `.mov` video files.
+    * **One-Click Playback:** Clicking attached audio/video links in preview immediately opens them in your default Windows media player.
+  * **Three View Modes:**
     * `Edit`: Distraction-free Markdown editor.
     * `Split`: Live side-by-side editing and formatted Markdown preview.
-    * `Preview`: Full rendered rich text view with styled headings, code blocks, checklists, and blockquotes.
-* **Zero Configuration Storage:**
-  * Automatic local SQLite persistence. Uses `%LOCALAPPDATA%/StickyNotes/notes.db` when packaged as an executable. Works completely offline.
+    * `Preview`: Full rendered rich text view with styled headings, images, code blocks, checklists, and media badges.
+* **Zero Configuration Storage & Attachments:**
+  * Automatic local SQLite persistence and local `attachments/` folder. Uses `%LOCALAPPDATA%/StickyNotes/` when packaged as an executable. Works completely offline.
 * **Gift App Ready (Standalone .exe):**
   * Package into a standalone portable `.zip` or `.exe` via `python build_exe.py` that runs on any Windows PC with zero dependencies.
 

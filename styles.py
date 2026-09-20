@@ -216,9 +216,28 @@ ul, ol {
 li {
     margin-bottom: 4px;
 }
+u {
+    text-decoration: underline;
+}
+del, s, strike {
+    text-decoration: line-through;
+    color: #8c959f;
+}
+img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 10px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    display: block;
+}
 a {
     color: #0969da;
     text-decoration: none;
+    font-weight: 500;
+}
+a:hover {
+    text-decoration: underline;
 }
 </style>
 """

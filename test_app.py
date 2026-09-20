@@ -49,12 +49,37 @@ def test_database():
 
     print("[SUCCESS] All database operations (including duplicate and bulk delete) passed!")
 
+def test_media():
+    print("Testing media manager operations...")
+    try:
+        from sticky_notes_app import media_manager
+    except ImportError:
+        import media_manager
+
+    att_dir = media_manager.get_attachments_dir()
+    assert att_dir.exists(), "Attachments directory must exist"
+
+    # Create dummy file to test copy_to_attachments
+    dummy_file = att_dir / "temp_test_file.txt"
+    dummy_file.write_text("Hello media attachment", encoding="utf-8")
+    
+    copied = media_manager.copy_to_attachments(str(dummy_file))
+    assert copied.exists()
+    assert "temp_test_file" in copied.name
+    
+    # Cleanup dummy files
+    dummy_file.unlink(missing_ok=True)
+    copied.unlink(missing_ok=True)
+    print("[SUCCESS] Media manager operations passed!")
+
 def test_imports():
     print("Testing PySide6 widget imports...")
     try:
         from sticky_notes_app.styles import APP_STYLESHEET, NOTE_COLORS
         from sticky_notes_app.components.color_picker_flyout import ColorPickerFlyout
         from sticky_notes_app.components.note_card import NoteCard
+        from sticky_notes_app.components.format_toolbar import FormatToolbar
+        from sticky_notes_app.components.voice_recorder_dialog import VoiceRecorderDialog
         from sticky_notes_app.views.grid_view import StickyNotesGridView
         from sticky_notes_app.views.editor_view import NoteEditorView
         from sticky_notes_app.main import MainWindow
@@ -62,6 +87,8 @@ def test_imports():
         from styles import APP_STYLESHEET, NOTE_COLORS
         from components.color_picker_flyout import ColorPickerFlyout
         from components.note_card import NoteCard
+        from components.format_toolbar import FormatToolbar
+        from components.voice_recorder_dialog import VoiceRecorderDialog
         from views.grid_view import StickyNotesGridView
         from views.editor_view import NoteEditorView
         from main import MainWindow
@@ -69,5 +96,6 @@ def test_imports():
 
 if __name__ == "__main__":
     test_database()
+    test_media()
     test_imports()
     print("[ALL PASSED] All verification tests passed successfully!")

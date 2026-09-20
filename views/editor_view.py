@@ -1,17 +1,24 @@
+from pathlib import Path
 import markdown2
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QUrl
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QTextEdit, QTextBrowser, QPushButton,
     QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication
 )
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QDesktopServices
 try:
     from ..components.color_picker_flyout import ColorPickerFlyout
+    from ..components.format_toolbar import FormatToolbar
+    from ..components.voice_recorder_dialog import VoiceRecorderDialog
+    from ..media_manager import copy_to_attachments
     from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
+    from components.format_toolbar import FormatToolbar
+    from components.voice_recorder_dialog import VoiceRecorderDialog
+    from media_manager import copy_to_attachments
     from styles import MARKDOWN_PREVIEW_CSS, is_dark_color
     import database
 
@@ -151,10 +158,18 @@ class NoteEditorView(QWidget):
         # Rendered Markdown Browser
         self.preview = QTextBrowser(self.splitter)
         self.preview.setObjectName("MarkdownPreview")
-        self.preview.setOpenExternalLinks(True)
+        self.preview.setOpenExternalLinks(False)
+        self.preview.anchorClicked.connect(self._on_anchor_clicked)
 
         self.splitter.addWidget(self.editor)
         self.splitter.addWidget(self.preview)
+
+        # Formatting & Media Toolbar
+        self.format_toolbar = FormatToolbar(self.editor, self)
+        self.format_toolbar.add_picture_requested.connect(self._on_add_picture)
+        self.format_toolbar.add_audio_requested.connect(self._on_add_audio)
+        self.format_toolbar.add_video_requested.connect(self._on_add_video)
+        main_layout.addWidget(self.format_toolbar)
 
         main_layout.addWidget(self.splitter, 1)
 
@@ -311,14 +326,68 @@ class NoteEditorView(QWidget):
             file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as HTML", f"{safe_title}.html", "HTML Files (*.html)")
             if file_path:
                 html_body = markdown2.markdown(content, extras=["fenced-code-blocks", "tables", "task_list", "strike"])
-                full_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{title}</title>{MARKDOWN_PREVIEW_CSS}</head><body><h1>{title}</h1>{html_body}</body></html>"
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(full_html)
 
+    def _on_add_picture(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Insert Picture",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.gif *.webp *.bmp);;All Files (*.*)"
+        )
+        if file_path:
+            copied = copy_to_attachments(file_path)
+            url = QUrl.fromLocalFile(str(copied)).toString()
+            cursor = self.editor.textCursor()
+            cursor.insertText(f"\n![{copied.stem}]({url})\n")
+            self.editor.setFocus()
+
+    def _on_add_audio(self):
+        dialog = VoiceRecorderDialog(self)
+        if dialog.exec():
+            if dialog.result_audio_path:
+                path = Path(dialog.result_audio_path)
+                url = QUrl.fromLocalFile(str(path)).toString()
+                cursor = self.editor.textCursor()
+                cursor.insertText(f"\n🎵 [Play Voice Note: {path.name}]({url})\n")
+                self.editor.setFocus()
+
+    def _on_add_video(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Attach Video",
+            "",
+            "Video Files (*.mp4 *.webm *.mkv *.mov *.avi);;All Files (*.*)"
+        )
+        if file_path:
+            copied = copy_to_attachments(file_path)
+            url = QUrl.fromLocalFile(str(copied)).toString()
+            cursor = self.editor.textCursor()
+            cursor.insertText(f"\n🎥 [Watch Video: {copied.name}]({url})\n")
+            self.editor.setFocus()
+
+    def _on_anchor_clicked(self, url: QUrl):
+        """Open audio/video media files or links with default system handler."""
+        QDesktopServices.openUrl(url)
+
     def keyPressEvent(self, event):
-        # Allow pressing Escape to quickly return to notes
+        # Keyboard formatting shortcuts
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.key() == Qt.Key.Key_B:
+                self.format_toolbar.apply_bold()
+                return
+            elif event.key() == Qt.Key.Key_I:
+                self.format_toolbar.apply_italic()
+                return
+            elif event.key() == Qt.Key.Key_U:
+                self.format_toolbar.apply_underline()
+                return
+
+        # Escape key returns to notes board
         if event.key() == Qt.Key.Key_Escape:
             self._on_back_clicked()
         else:
             super().keyPressEvent(event)
+
 
