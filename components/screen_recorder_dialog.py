@@ -4,15 +4,18 @@ Features display monitor selection, optional microphone narration, and a floatin
 HUD overlay controller during active screen capture.
 """
 
+import os
+import sys
+import subprocess
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QPoint, Signal
+from PySide6.QtCore import Qt, QPoint, Signal, QUrl, QTimer
 from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QComboBox, QCheckBox, QFrame, QMessageBox
+    QPushButton, QComboBox, QCheckBox, QFrame, QMessageBox, QLineEdit
 )
-from PySide6.QtGui import QCursor, QScreen
+from PySide6.QtGui import QCursor, QScreen, QDesktopServices, QGuiApplication
 
 try:
     from ..theme_manager import get_theme_manager
@@ -143,6 +146,7 @@ class ScreenRecorderDialog(QDialog):
         self.recorder = ScreenRecorder(self)
         self.overlay: Optional[ScreenRecordingOverlay] = None
         self.result_video_path: Optional[str] = None
+        self.result_duration: int = 0
 
         self.recorder.duration_changed.connect(self._on_duration_changed)
         self.recorder.recording_finished.connect(self._on_recording_finished)
@@ -303,6 +307,7 @@ class ScreenRecorderDialog(QDialog):
         self.reject()
 
     def _on_duration_changed(self, seconds: int):
+        self.result_duration = seconds
         if self.overlay:
             self.overlay.update_time(seconds)
 
@@ -311,6 +316,8 @@ class ScreenRecorderDialog(QDialog):
             self.overlay.close()
             self.overlay = None
         self.result_video_path = file_path
+        if self.recorder and hasattr(self.recorder, 'elapsed_seconds'):
+            self.result_duration = self.recorder.elapsed_seconds
         self.accept()
 
     def _on_recording_error(self, error_msg: str):
@@ -319,3 +326,196 @@ class ScreenRecorderDialog(QDialog):
             self.overlay = None
         self.show()
         QMessageBox.warning(self, "Recording Notice", error_msg)
+
+
+class RecordingCompleteDialog(QDialog):
+    """
+    Modal dialog displayed after a screen recording finishes.
+    Displays recording metadata, exact local path, with quick actions
+    to play the video, reveal it in Windows Explorer, copy the path, or insert into the note.
+    """
+    def __init__(self, file_path: str, duration: int = 0, parent=None):
+        super().__init__(parent)
+        self.file_path = os.path.normpath(file_path)
+        self.duration = duration
+        self.setWindowTitle("Screen Recording Saved")
+        self.setFixedWidth(460)
+
+        self.theme_mgr = get_theme_manager()
+        self.theme = self.theme_mgr.current_theme
+        self.pal = THEME_PALETTES.get(self.theme, THEME_PALETTES["light"])
+
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        # Header
+        header = QHBoxLayout()
+        icon_lbl = QLabel(self)
+        icon_lbl.setPixmap(get_themed_icon("video", role="primary", theme=self.theme, size=28).pixmap(28, 28))
+        header.addWidget(icon_lbl)
+
+        title_layout = QVBoxLayout()
+        title_lbl = QLabel("Screen Recording Saved!", self)
+        title_lbl.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
+        subtitle_lbl = QLabel("Video is saved and inserted into your note.", self)
+        subtitle_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_muted']};")
+        title_layout.addWidget(title_lbl)
+        title_layout.addWidget(subtitle_lbl)
+        header.addLayout(title_layout)
+        header.addStretch()
+        layout.addLayout(header)
+
+        # Details Card
+        card = QFrame(self)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {self.pal['bg_surface']};
+                border: 1px solid {self.pal['border']};
+                border-radius: 8px;
+                padding: 12px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(8)
+
+        p = Path(self.file_path)
+        file_size_str = "Unknown"
+        if p.exists():
+            size_bytes = p.stat().st_size
+            if size_bytes < 1024 * 1024:
+                file_size_str = f"{size_bytes / 1024:.1f} KB"
+            else:
+                file_size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+
+        m, s = divmod(self.duration, 60)
+        dur_str = f"{m:02d}:{s:02d}"
+
+        # Info rows
+        info_html = f"""
+        <table style="color: {self.pal['text_primary']}; font-size: 12px; line-height: 1.5;">
+            <tr><td style="color: {self.pal['text_muted']}; width: 80px;"><b>File Name:</b></td><td><b>{p.name}</b></td></tr>
+            <tr><td style="color: {self.pal['text_muted']};"><b>Duration:</b></td><td>{dur_str}</td></tr>
+            <tr><td style="color: {self.pal['text_muted']};"><b>File Size:</b></td><td>{file_size_str}</td></tr>
+        </table>
+        """
+        info_lbl = QLabel(info_html, card)
+        info_lbl.setTextFormat(Qt.TextFormat.RichText)
+        card_layout.addWidget(info_lbl)
+
+        # File location row
+        loc_lbl = QLabel("<b>File Location:</b>", card)
+        loc_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_primary']}; margin-top: 4px;")
+        card_layout.addWidget(loc_lbl)
+
+        path_row = QHBoxLayout()
+        self.path_edit = QLineEdit(self.file_path, card)
+        self.path_edit.setReadOnly(True)
+        self.path_edit.setStyleSheet(f"""
+            QLineEdit {{
+                background: {self.pal['input_bg']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['input_border']};
+                border-radius: 6px;
+                padding: 5px 8px;
+                font-family: monospace;
+                font-size: 11px;
+            }}
+        """)
+        path_row.addWidget(self.path_edit)
+
+        self.copy_btn = QPushButton("📋 Copy", card)
+        self.copy_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.copy_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {self.pal['btn_bg']};
+                color: {self.pal['btn_text']};
+                border: 1px solid {self.pal['border']};
+                border-radius: 6px;
+                padding: 5px 10px;
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {self.pal['btn_hover']};
+            }}
+        """)
+        self.copy_btn.clicked.connect(self._copy_path)
+        path_row.addWidget(self.copy_btn)
+        card_layout.addLayout(path_row)
+
+        layout.addWidget(card)
+
+        # Action buttons
+        btn_row = QHBoxLayout()
+
+        self.play_btn = QPushButton("▶️ Play Video", self)
+        self.play_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.play_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {self.pal['btn_bg']};
+                color: {self.pal['btn_text']};
+                border: 1px solid {self.pal['border']};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {self.pal['btn_hover']};
+            }}
+        """)
+        self.play_btn.clicked.connect(self._play_video)
+        btn_row.addWidget(self.play_btn)
+
+        self.folder_btn = QPushButton("📂 Show in Folder", self)
+        self.folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.folder_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {self.pal['btn_bg']};
+                color: {self.pal['btn_text']};
+                border: 1px solid {self.pal['border']};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {self.pal['btn_hover']};
+            }}
+        """)
+        self.folder_btn.clicked.connect(self._show_in_folder)
+        btn_row.addWidget(self.folder_btn)
+
+        btn_row.addStretch()
+
+        self.close_btn = QPushButton("✓ Done", self)
+        self.close_btn.setObjectName("NewNoteButton")
+        self.close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.close_btn.setFixedHeight(32)
+        self.close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(self.close_btn)
+
+        layout.addLayout(btn_row)
+
+    def _copy_path(self):
+        clipboard = QGuiApplication.clipboard()
+        if clipboard:
+            clipboard.setText(self.file_path)
+            self.copy_btn.setText("✓ Copied!")
+            QTimer.singleShot(1500, lambda: self.copy_btn.setText("📋 Copy"))
+
+    def _play_video(self):
+        if Path(self.file_path).exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.file_path))
+
+    def _show_in_folder(self):
+        if not Path(self.file_path).exists():
+            return
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", f"/select,{os.path.normpath(self.file_path)}"])
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self.file_path).parent)))

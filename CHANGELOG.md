@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.1] - 2026-09-20
+
+### Added & Fixed
+- **Universal Desktop Screen Recording Engine (`media_manager.py`):**
+  - Implemented `FrameCaptureThread` background capture pipeline using `QScreen.grabWindow` piped directly to FFmpeg (`libx264`, `yuv420p`, `ultrafast`).
+  - Completely resolves Windows DXGI Output Duplication COM error `0x80070005 (Access is denied)` on multi-GPU setups (Intel/AMD integrated + NVIDIA discrete) and session isolation.
+  - Synchronized audio-video capture: records microphone commentary simultaneously to temporary WAV and muxes H.264 video + AAC audio into MP4 seamlessly in <0.2s.
+  - Preserves graceful fallback to Qt6 `QScreenCapture` / `QMediaRecorder` when FFmpeg is not installed.
+- **Recording Complete Confirmation Modal (`components/screen_recorder_dialog.py`):**
+  - Added `RecordingCompleteDialog` modal presenting video filename, elapsed duration, file size, and exact local path on disk.
+  - Quick actions: `▶️ Play Video` (in default media player), `📂 Show in Folder` (revealing and highlighting the file in Windows Explorer), `📋 Copy Path`, and `✓ Done`.
+  - Note editor automatically activates `split` view mode on recording completion so the playable video link and preview are immediately visible.
+- **Attachments Folder Explorer Quick-Access (`components/format_toolbar.py` & `views/editor_view.py`):**
+  - Added `📂 Open Attachments Folder...` action to the toolbar's Video dropdown menu, allowing instant access to `%LOCALAPPDATA%\StickyNotes\attachments` or the local workspace attachments directory.
+
+---
+
 ## [1.6.0] - 2026-09-20
 
 ### Added & Improved

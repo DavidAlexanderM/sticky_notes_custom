@@ -38,6 +38,7 @@ class FormatToolbar(QFrame):
     add_audio_requested = Signal()
     add_video_requested = Signal()
     record_screen_requested = Signal()
+    open_attachments_requested = Signal()
 
     def __init__(self, editor: QTextEdit, parent=None):
         super().__init__(parent)
@@ -116,6 +117,10 @@ class FormatToolbar(QFrame):
 
         choose_action = menu.addAction("📁 Choose Existing Video File...")
         choose_action.triggered.connect(self.add_video_requested.emit)
+
+        menu.addSeparator()
+        folder_action = menu.addAction("📂 Open Attachments Folder...")
+        folder_action.triggered.connect(self.open_attachments_requested.emit)
 
         menu.exec(self.btn_video.mapToGlobal(self.btn_video.rect().bottomLeft()))
 

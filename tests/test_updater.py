@@ -81,21 +81,21 @@ class TestUpdater(unittest.TestCase):
 
     def test_parse_release_payload_mirror(self):
         mock_manifest = {
-            "version": "1.6.0",
-            "tag_name": "v1.6.0",
+            "version": "9.9.0",
+            "tag_name": "v9.9.0",
             "published_at": "2026-09-20T18:00:00Z",
-            "html_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/tag/v1.6.0",
+            "html_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/tag/v9.9.0",
             "body": "- Zero-token public mirror support\n- Automated CI/CD sync",
-            "asset_name": "StickyNotes_v1.6.0_Windows.zip",
+            "asset_name": "StickyNotes_v9.9.0_Windows.zip",
             "asset_size": 75000000,
-            "browser_download_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.6.0/StickyNotes_v1.6.0_Windows.zip"
+            "browser_download_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v9.9.0/StickyNotes_v9.9.0_Windows.zip"
         }
         res = parse_release_payload(mock_manifest, source_name="public_mirror")
-        self.assertEqual(res["version"], "1.6.0")
-        self.assertEqual(res["tag_name"], "v1.6.0")
+        self.assertEqual(res["version"], "9.9.0")
+        self.assertEqual(res["tag_name"], "v9.9.0")
         self.assertEqual(res["source"], "public_mirror")
         self.assertTrue(res["has_update"])
-        self.assertEqual(res["asset_name"], "StickyNotes_v1.6.0_Windows.zip")
+        self.assertEqual(res["asset_name"], "StickyNotes_v9.9.0_Windows.zip")
         self.assertEqual(res["asset_size"], 75000000)
 
     def test_manifest_generator_script(self):

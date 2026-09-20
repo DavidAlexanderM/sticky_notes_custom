@@ -60,7 +60,8 @@ def run_automated_tests():
         PROJECT_ROOT / "tests" / "test_theme_manager.py",
         PROJECT_ROOT / "tests" / "test_gui_features.py",
         PROJECT_ROOT / "tests" / "test_screen_recorder.py",
-        PROJECT_ROOT / "tests" / "test_projects.py"
+        PROJECT_ROOT / "tests" / "test_projects.py",
+        PROJECT_ROOT / "tests" / "test_updater.py"
     ]
 
     for test_file in test_files:
