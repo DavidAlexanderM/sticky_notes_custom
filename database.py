@@ -152,9 +152,8 @@ def delete_multiple_notes(note_ids: List[str]) -> None:
     """Deletes a list of notes by IDs in a single transaction."""
     if not note_ids:
         return
-    placeholders = ",".join("?" for _ in note_ids)
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(f"DELETE FROM notes WHERE id IN ({placeholders})", note_ids)
+        cursor.executemany("DELETE FROM notes WHERE id = ?", [(nid,) for nid in note_ids])
         conn.commit()
 

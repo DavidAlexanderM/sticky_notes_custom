@@ -18,6 +18,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-09-19
+
+### Added
+- **Application Security Module (`security.py`):**
+  - Path traversal defense verifying all attachment operations stay strictly within the `attachments/` directory.
+  - Executable and script attachment blocking (`.exe`, `.bat`, `.cmd`, `.ps1`, `.vbs`, `.sh`, `.scr`, `.msi`, `.dll`, double-extensions).
+  - External link protocol whitelisting (`http://`, `https://`, `mailto:`) and blocking dangerous system launcher schemes (`javascript:`, `shell:`, `powershell:`, `ms-msdt:`).
+  - HTML sanitization stripping active `<script>`, `<iframe>`, `<embed>`, and inline event handlers from Markdown preview.
+- **Automated Security Test Suite (`tests/test_security.py`):**
+  - 11 comprehensive automated tests verifying path traversal prevention, dangerous extension rejection, safe URL protocols, script stripping, and SQLite parameterization against SQL injection payloads.
+- **AST Static Analysis & DevSecOps Gate (`scripts/security_check.py`):**
+  - Token-efficient AST code scanner verifying zero dynamic SQL string formatting and zero unsafe code execution calls (`eval`, `exec`, `os.system`).
+  - Integrated dependency vulnerability auditing via `pip-audit`.
+- **4-Stage Verification Gate (`scripts/verify_lifecycle.py`):**
+  - Added Stage 4 running the security test suite and AST security scanner on every pre-release check.
+- **Agentic Infrastructure:**
+  - `AGENTS.md` root operations manual.
+  - Token-saving SQLite CLI helper (`scripts/db_cli.py`).
+  - Antigravity workspace operational skill (`.agents/skills/sticky-notes-ops/SKILL.md`).
+  - Local Model Context Protocol configuration (`.agents/mcp_config.json`).
+
+### Changed
+- Refactored `database.delete_multiple_notes()` to use 100% static parameterized `executemany()` query.
+- Fixed variable scope for HTML note export in `NoteEditorView`.
+
+---
+
 ## [1.2.0] - 2026-09-19
 
 ### Added

@@ -11,15 +11,17 @@ try:
     from ..components.color_picker_flyout import ColorPickerFlyout
     from ..components.format_toolbar import FormatToolbar
     from ..components.voice_recorder_dialog import VoiceRecorderDialog
-    from ..media_manager import copy_to_attachments
+    from ..media_manager import copy_to_attachments, get_attachments_dir
     from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color
+    from ..security import is_safe_url, sanitize_markdown_html
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from components.format_toolbar import FormatToolbar
     from components.voice_recorder_dialog import VoiceRecorderDialog
-    from media_manager import copy_to_attachments
+    from media_manager import copy_to_attachments, get_attachments_dir
     from styles import MARKDOWN_PREVIEW_CSS, is_dark_color
+    from security import is_safe_url, sanitize_markdown_html
     import database
 
 class NoteEditorView(QWidget):
@@ -233,7 +235,8 @@ class NoteEditorView(QWidget):
             raw_text, 
             extras=["fenced-code-blocks", "tables", "task_list", "strike"]
         )
-        full_html = f"<html><head>{MARKDOWN_PREVIEW_CSS}</head><body>{html_body}</body></html>"
+        safe_html_body = sanitize_markdown_html(html_body)
+        full_html = f"<html><head>{MARKDOWN_PREVIEW_CSS}</head><body>{safe_html_body}</body></html>"
         self.preview.setHtml(full_html)
 
     def _auto_save(self):
@@ -326,6 +329,8 @@ class NoteEditorView(QWidget):
             file_path, _ = QFileDialog.getSaveFileName(self, "Export Note as HTML", f"{safe_title}.html", "HTML Files (*.html)")
             if file_path:
                 html_body = markdown2.markdown(content, extras=["fenced-code-blocks", "tables", "task_list", "strike"])
+                safe_html_body = sanitize_markdown_html(html_body)
+                full_html = f"<html><head>{MARKDOWN_PREVIEW_CSS}</head><body>{safe_html_body}</body></html>"
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(full_html)
 
@@ -337,7 +342,11 @@ class NoteEditorView(QWidget):
             "Image Files (*.png *.jpg *.jpeg *.gif *.webp *.bmp);;All Files (*.*)"
         )
         if file_path:
-            copied = copy_to_attachments(file_path)
+            try:
+                copied = copy_to_attachments(file_path)
+            except ValueError as e:
+                QMessageBox.warning(self, "Security Alert", str(e))
+                return
             url = QUrl.fromLocalFile(str(copied)).toString()
             cursor = self.editor.textCursor()
             cursor.insertText(f"\n![{copied.stem}]({url})\n")
@@ -361,15 +370,28 @@ class NoteEditorView(QWidget):
             "Video Files (*.mp4 *.webm *.mkv *.mov *.avi);;All Files (*.*)"
         )
         if file_path:
-            copied = copy_to_attachments(file_path)
+            try:
+                copied = copy_to_attachments(file_path)
+            except ValueError as e:
+                QMessageBox.warning(self, "Security Alert", str(e))
+                return
             url = QUrl.fromLocalFile(str(copied)).toString()
             cursor = self.editor.textCursor()
             cursor.insertText(f"\n🎥 [Watch Video: {copied.name}]({url})\n")
             self.editor.setFocus()
 
     def _on_anchor_clicked(self, url: QUrl):
-        """Open audio/video media files or links with default system handler."""
-        QDesktopServices.openUrl(url)
+        """Open audio/video media files or links with security validation."""
+        url_str = url.toString()
+        is_safe, reason = is_safe_url(url_str, allowed_attachments_dir=get_attachments_dir())
+        if is_safe:
+            QDesktopServices.openUrl(url)
+        else:
+            QMessageBox.warning(
+                self, 
+                "Security Alert", 
+                f"Opening this link was blocked for your protection:\n\n{url_str}\n\nReason: {reason}"
+            )
 
     def keyPressEvent(self, event):
         # Keyboard formatting shortcuts

@@ -29,6 +29,8 @@ def get_default_microphone_name() -> Optional[str]:
         return default_dev.description()
     return None
 
+from security import is_safe_attachment, sanitize_filename
+
 def get_attachments_dir() -> Path:
     """Returns the persistent directory where attachments are stored."""
     if getattr(sys, 'frozen', False):
@@ -36,25 +38,37 @@ def get_attachments_dir() -> Path:
     else:
         base_dir = Path(__file__).resolve().parent
     
-    attachments_dir = base_dir / "attachments"
+    attachments_dir = (base_dir / "attachments").resolve()
     attachments_dir.mkdir(parents=True, exist_ok=True)
     return attachments_dir
 
 def copy_to_attachments(source_path: str) -> Path:
     """
     Copies a media file to the attachments directory with a sanitized, collision-free filename.
+    Guarantees path containment and rejects unsafe executable/script files.
     Returns the Path to the copied file.
     """
-    source = Path(source_path)
+    source = Path(source_path).resolve()
     if not source.exists():
         raise FileNotFoundError(f"File not found: {source_path}")
 
-    # Sanitize stem
-    clean_stem = re.sub(r'[^a-zA-Z0-9_\-]', '_', source.stem)[:30]
+    # Enforce security validation
+    is_safe, reason = is_safe_attachment(source)
+    if not is_safe:
+        raise ValueError(reason)
+
+    # Sanitize stem and suffix
     unique_id = uuid.uuid4().hex[:8]
-    target_filename = f"{clean_stem}_{unique_id}{source.suffix.lower()}"
-    
-    dest_path = get_attachments_dir() / target_filename
+    clean_stem = f"{source.stem[:25]}_{unique_id}"
+    safe_name = sanitize_filename(clean_stem, source.suffix)
+
+    attachments_dir = get_attachments_dir()
+    dest_path = (attachments_dir / safe_name).resolve()
+
+    # Strict path traversal containment assertion
+    if not dest_path.is_relative_to(attachments_dir):
+        raise PermissionError("Path traversal violation: Target location is outside the attachments directory.")
+
     shutil.copy2(source, dest_path)
     return dest_path
 

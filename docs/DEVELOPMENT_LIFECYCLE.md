@@ -96,13 +96,19 @@ Every proposed change passes through five sequential validation stages:
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Stage 4: Documentation Synchronization                 │
+│ Stage 4: DevSecOps & Security Audit Gate               │
+│ - Path traversal, SQLi tests, AST SAST scanner pass    │
+└────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ Stage 5: Documentation Synchronization                 │
 │ - Update ARCHITECTURE.md, README.md, and CHANGELOG.md  │
 └────────────────────────────────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Stage 5: Version Bump & Release Packaging              │
+│ Stage 6: Version Bump & Release Packaging              │
 │ - Bump version.py, build standalone .exe & git tag     │
 └────────────────────────────────────────────────────────┘
 ```
@@ -115,8 +121,9 @@ A feature is considered **Done** and ready for production only when all boxes ar
 
 * [ ] **Code Implementation:** Clean, modular code adhering to PEP 8 standards with full type annotations.
 * [ ] **Automated Testing:** Dedicated test cases written in `tests/` and verified with `0` failures.
+* [ ] **Security Verification:** `tests/test_security.py` passes 100% and AST scanner (`scripts/security_check.py`) finds 0 high/critical violations.
 * [ ] **Cross-Platform Safety:** Paths use `pathlib.Path` or Qt standard paths (no hardcoded OS-specific backslashes).
 * [ ] **Documentation Sync:** `docs/ARCHITECTURE.md` updated if components or data flows were modified.
 * [ ] **Changelog Logged:** Detailed changes recorded under the target version in `CHANGELOG.md`.
 * [ ] **Version Alignment:** `version.py` matches the target milestone.
-* [ ] **Lifecycle Verification:** `python scripts/verify_lifecycle.py` runs with a `[SUCCESS]` exit code.
+* [ ] **Lifecycle Verification:** `python scripts/verify_lifecycle.py` runs with a `[LIFECYCLE PASSED]` exit code.

@@ -190,3 +190,33 @@ While desktop platforms (Windows, macOS, Linux) share 95% of PySide6 code direct
    * Same visual sticky-note card board.
    * Direct camera capture and native mobile voice memo recording.
    * Cloud sync to match the desktop database.
+
+---
+
+## 7. Application Security & DevSecOps Architecture
+
+To safeguard client machines against local file exploits, malicious Markdown snippets, and arbitrary code execution, the application enforces defense-in-depth security policies:
+
+```mermaid
+flowchart TD
+    UserInput[Untrusted User Input / Files / Links] --> SecGate{Security Gate (security.py)}
+    
+    SecGate -->|Path Check| PCheck[Path Traversal Defense: is_relative_to]
+    SecGate -->|Extension Check| ECheck[Block dangerous types: .exe, .bat, .cmd, .ps1, .vbs]
+    SecGate -->|URL Check| UCheck[Protocol Whitelist: http, https, mailto]
+    SecGate -->|HTML Sanitizer| HCheck[Strip script, iframe, embed, and inline on* handlers]
+    
+    PCheck -->|Safe| FS[(attachments/)]
+    ECheck -->|Unsafe| Block1[Reject with User Warning Dialog]
+    UCheck -->|Safe External| SysBrowser[System Browser via QDesktopServices]
+    UCheck -->|Unsafe Scheme| Block2[Block with Security Alert Dialog]
+    HCheck -->|Sanitized HTML| QtPreview[QTextBrowser Preview]
+```
+
+### Security Defenses Implemented:
+1. **Strict Path Containment:** Every media attachment copied via `media_manager.copy_to_attachments()` is checked against `Path.resolve().is_relative_to(get_attachments_dir().resolve())`. Any traversal attempts (`../../`) immediately raise a `PermissionError`.
+2. **Dangerous Filetype Blocking:** Attachments matching `.exe`, `.bat`, `.cmd`, `.ps1`, `.vbs`, `.sh`, `.scr`, `.msi`, `.dll`, or hidden double extensions (e.g. `invoice.pdf.exe`) are rejected before disk writes occur.
+3. **URL Protocol Whitelisting:** External links clicked in `NoteEditorView` are evaluated with `is_safe_url()`. Only `http://`, `https://`, `mailto:`, or local attachments within the app's `attachments/` directory are permitted. Dangerous schemes (`javascript:`, `shell:`, `powershell:`, `ms-msdt:`, or arbitrary local binaries) are blocked.
+4. **Markdown Preview HTML Sanitization:** Raw or generated HTML is processed through `sanitize_markdown_html()` to strip active `<script>` tags, malicious frames, embeds, and JavaScript event handlers (`onload`, `onerror`, `onclick`).
+5. **100% Parameterized SQLite Engine:** All database operations strictly use parameterized queries (`?` placeholders). Dynamic query building with f-strings is prohibited and enforced via pre-commit AST static analysis (`scripts/security_check.py`).
+
