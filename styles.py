@@ -1,87 +1,99 @@
 """
-styles.py - Design system, tokenized palettes, and QSS stylesheets for Sticky Notes.
-Supports Light, Dark, and Sepia themes with responsive typography and Fluent/WinUI 3 styling.
+styles.py - High-contrast design system, tokenized palettes, and QSS stylesheets for Sticky Notes.
+Engineered for maximum legibility, WCAG AAA contrast, and modern WinUI 3 / Fluent styling.
 """
 
 from typing import Dict, Any
 
 NOTE_COLORS = [
-    {"name": "Butter Yellow", "hex": "#FFF9C4", "dark": False, "border": "#F0E68C", "dark_hex": "#3A351E"},
-    {"name": "Mint Green",   "hex": "#C8E6C9", "dark": False, "border": "#A5D6A7", "dark_hex": "#1E3825"},
-    {"name": "Soft Coral",   "hex": "#FFCDD2", "dark": False, "border": "#EF9A9A", "dark_hex": "#3E2224"},
-    {"name": "Lavender",     "hex": "#E1BEE7", "dark": False, "border": "#CE93D8", "dark_hex": "#34203A"},
-    {"name": "Sky Blue",     "hex": "#BBDEFB", "dark": False, "border": "#90CAF9", "dark_hex": "#1B2C3F"},
-    {"name": "Warm Peach",   "hex": "#FFE0B2", "dark": False, "border": "#FFCC80", "dark_hex": "#3D2B1A"},
-    {"name": "Soft Pink",    "hex": "#F8BBD0", "dark": False, "border": "#F48FB1", "dark_hex": "#3C1D2A"},
-    {"name": "Slate Dark",   "hex": "#27272A", "dark": True,  "border": "#3F3F46", "dark_hex": "#27272A"},
+    {"name": "Butter Yellow", "hex": "#FFF9C4", "dark": False, "border": "#E6D775", "dark_hex": "#3A351E"},
+    {"name": "Mint Green",   "hex": "#C8E6C9", "dark": False, "border": "#81C784", "dark_hex": "#1E3825"},
+    {"name": "Soft Coral",   "hex": "#FFCDD2", "dark": False, "border": "#E57373", "dark_hex": "#3E2224"},
+    {"name": "Lavender",     "hex": "#E1BEE7", "dark": False, "border": "#BA68C8", "dark_hex": "#34203A"},
+    {"name": "Sky Blue",     "hex": "#BBDEFB", "dark": False, "border": "#64B5F6", "dark_hex": "#1B2C3F"},
+    {"name": "Warm Peach",   "hex": "#FFE0B2", "dark": False, "border": "#FFB74D", "dark_hex": "#3D2B1A"},
+    {"name": "Soft Pink",    "hex": "#F8BBD0", "dark": False, "border": "#F06292", "dark_hex": "#3C1D2A"},
+    {"name": "Slate Dark",   "hex": "#1E293B", "dark": True,  "border": "#475569", "dark_hex": "#1E293B"},
 ]
 
 THEME_PALETTES: Dict[str, Dict[str, str]] = {
     "light": {
-        "bg_main": "#F4F5F7",
+        "bg_main": "#F8FAFC",              # Clean light slate canvas
         "bg_surface": "#FFFFFF",
         "bg_card": "#FFFFFF",
-        "text_primary": "#1A1A1A",
-        "text_secondary": "#64748B",
-        "text_muted": "#94A3B8",
-        "border": "rgba(0, 0, 0, 0.08)",
-        "border_subtle": "rgba(0, 0, 0, 0.04)",
-        "accent": "#0067C0",
-        "accent_hover": "#005FB8",
-        "accent_pressed": "#0054A6",
+        "text_primary": "#0F172A",         # Deep slate-900 - maximum contrast
+        "text_secondary": "#334155",       # Slate-700 - sharp, never washed-out
+        "text_muted": "#475569",           # Slate-600
+        "border": "#CBD5E1",               # Slate-300 - crisp, defined edges
+        "border_subtle": "#E2E8F0",
+        "accent": "#2563EB",               # Vibrant blue
+        "accent_hover": "#1D4ED8",
+        "accent_pressed": "#1E40AF",
         "accent_text": "#FFFFFF",
+        "btn_bg": "#FFFFFF",
+        "btn_hover": "#F1F5F9",
+        "btn_text": "#0F172A",             # High contrast button label
         "input_bg": "#FFFFFF",
-        "input_border": "rgba(0, 0, 0, 0.12)",
-        "scrollbar_handle": "rgba(0, 0, 0, 0.18)",
-        "scrollbar_hover": "rgba(0, 0, 0, 0.35)",
-        "shadow_color": "rgba(0, 0, 0, 0.08)",
-        "card_border": "rgba(0, 0, 0, 0.07)",
+        "input_border": "#94A3B8",
+        "pill_bg": "#F1F5F9",
+        "pill_text": "#1E293B",            # Crisp readable filter chips
+        "scrollbar_handle": "#94A3B8",
+        "scrollbar_hover": "#64748B",
+        "action_bar_bg": "#FFFFFF",
+        "action_bar_border": "#CBD5E1",
         "menu_bg": "#FFFFFF",
-        "toolbar_bg": "rgba(255, 255, 255, 0.95)",
     },
     "dark": {
-        "bg_main": "#121214",
-        "bg_surface": "#1E1E22",
-        "bg_card": "#26262B",
-        "text_primary": "#F4F4F5",
-        "text_secondary": "#A1A1AA",
-        "text_muted": "#71717A",
-        "border": "rgba(255, 255, 255, 0.12)",
-        "border_subtle": "rgba(255, 255, 255, 0.06)",
-        "accent": "#38BDF8",
+        "bg_main": "#0F172A",              # Deep midnight slate canvas
+        "bg_surface": "#1E293B",
+        "bg_card": "#1E293B",
+        "text_primary": "#F8FAFC",         # Pure bright white text
+        "text_secondary": "#E2E8F0",       # Slate-200 - crystal clear legibility
+        "text_muted": "#CBD5E1",           # Slate-300
+        "border": "#475569",               # Slate-600 - sharp high-contrast border
+        "border_subtle": "#334155",
+        "accent": "#38BDF8",               # Sky-400
         "accent_hover": "#0EA5E9",
         "accent_pressed": "#0284C7",
         "accent_text": "#0F172A",
-        "input_bg": "#1E1E22",
-        "input_border": "rgba(255, 255, 255, 0.16)",
-        "scrollbar_handle": "rgba(255, 255, 255, 0.22)",
-        "scrollbar_hover": "rgba(255, 255, 255, 0.40)",
-        "shadow_color": "rgba(0, 0, 0, 0.40)",
-        "card_border": "rgba(255, 255, 255, 0.10)",
-        "menu_bg": "#1E1E22",
-        "toolbar_bg": "rgba(30, 30, 34, 0.95)",
+        "btn_bg": "#1E293B",
+        "btn_hover": "#334155",
+        "btn_text": "#F8FAFC",             # Pure bright white button label
+        "input_bg": "#1E293B",
+        "input_border": "#475569",
+        "pill_bg": "#1E293B",
+        "pill_text": "#F8FAFC",
+        "scrollbar_handle": "#475569",
+        "scrollbar_hover": "#64748B",
+        "action_bar_bg": "#1E293B",
+        "action_bar_border": "#475569",
+        "menu_bg": "#1E293B",
     },
     "sepia": {
-        "bg_main": "#F7F2E7",
+        "bg_main": "#F7F2E7",              # Warm parchment canvas
         "bg_surface": "#FFFDF9",
         "bg_card": "#FFFDF9",
-        "text_primary": "#3D332A",
-        "text_secondary": "#786C5E",
-        "text_muted": "#A89C8F",
-        "border": "rgba(61, 51, 42, 0.12)",
-        "border_subtle": "rgba(61, 51, 42, 0.06)",
+        "text_primary": "#2D2319",         # Deep espresso text
+        "text_secondary": "#574737",
+        "text_muted": "#6E5D4D",
+        "border": "#D5C7B3",
+        "border_subtle": "#E7DDCF",
         "accent": "#8C5A2B",
         "accent_hover": "#73471E",
         "accent_pressed": "#5A3414",
         "accent_text": "#FFFFFF",
+        "btn_bg": "#FFFDF9",
+        "btn_hover": "#F0E7D8",
+        "btn_text": "#2D2319",
         "input_bg": "#FFFDF9",
-        "input_border": "rgba(61, 51, 42, 0.16)",
-        "scrollbar_handle": "rgba(61, 51, 42, 0.20)",
-        "scrollbar_hover": "rgba(61, 51, 42, 0.38)",
-        "shadow_color": "rgba(61, 51, 42, 0.10)",
-        "card_border": "rgba(61, 51, 42, 0.09)",
+        "input_border": "#C4B49F",
+        "pill_bg": "#F0E7D8",
+        "pill_text": "#2D2319",
+        "scrollbar_handle": "#B8A790",
+        "scrollbar_hover": "#8C7A65",
+        "action_bar_bg": "#FFFDF9",
+        "action_bar_border": "#D5C7B3",
         "menu_bg": "#FFFDF9",
-        "toolbar_bg": "rgba(255, 253, 249, 0.95)",
     }
 }
 
@@ -126,7 +138,7 @@ QScrollArea > QWidget > QWidget {{
     background-color: transparent;
 }}
 
-/* Clean Modern Scrollbars */
+/* Crisp Modern Scrollbars */
 QScrollBar:vertical {{
     border: none;
     background: transparent;
@@ -159,17 +171,18 @@ QLabel#AppHeaderTitle {{
 
 QLabel#AppHeaderSubtitle {{
     font-size: 13px;
+    font-weight: 500;
     color: {pal["text_secondary"]};
 }}
 
-/* Buttons */
+/* Primary Action Button (+ New Note) */
 QPushButton#NewNoteButton {{
     background-color: {pal["accent"]};
     color: {pal["accent_text"]};
     border: none;
     border-radius: 8px;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     padding: 8px 18px;
 }}
 
@@ -181,32 +194,34 @@ QPushButton#NewNoteButton:pressed {{
     background-color: {pal["accent_pressed"]};
 }}
 
-QPushButton#ThemeToggleBtn {{
-    background-color: transparent;
+/* Standard High-Contrast Buttons */
+QPushButton#ThemeToggleBtn, QPushButton#SelectModeButton, QPushButton#EditorHeaderBtn {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["btn_text"]};
     border: 1px solid {pal["border"]};
     border-radius: 8px;
-    padding: 6px 12px;
-    font-size: 14px;
-    color: {pal["text_primary"]};
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
 }}
 
-QPushButton#ThemeToggleBtn:hover {{
-    background-color: {pal["border_subtle"]};
+QPushButton#ThemeToggleBtn:hover, QPushButton#SelectModeButton:hover, QPushButton#EditorHeaderBtn:hover {{
+    background-color: {pal["btn_hover"]};
     border-color: {pal["accent"]};
 }}
 
 QPushButton#BackButton {{
-    background-color: transparent;
+    background-color: {pal["btn_bg"]};
+    color: {pal["btn_text"]};
     border: 1px solid {pal["border"]};
     border-radius: 8px;
-    padding: 6px 12px;
+    padding: 6px 14px;
     font-size: 16px;
-    font-weight: bold;
-    color: {pal["text_primary"]};
+    font-weight: 700;
 }}
 
 QPushButton#BackButton:hover {{
-    background-color: {pal["border_subtle"]};
+    background-color: {pal["btn_hover"]};
     border-color: {pal["accent"]};
 }}
 
@@ -218,6 +233,7 @@ QLineEdit#SearchInput {{
     border-radius: 10px;
     padding: 8px 14px;
     font-size: 13px;
+    font-weight: 500;
 }}
 
 QLineEdit#SearchInput:focus {{
@@ -225,27 +241,27 @@ QLineEdit#SearchInput:focus {{
     background-color: {pal["bg_surface"]};
 }}
 
-/* Color Filter Chips */
+/* Interactive Color Filter Chips */
 QPushButton#FilterPill {{
-    background-color: transparent;
+    background-color: {pal["pill_bg"]};
+    color: {pal["pill_text"]};
     border: 1px solid {pal["border"]};
     border-radius: 14px;
-    padding: 4px 12px;
+    padding: 5px 14px;
     font-size: 12px;
-    font-weight: 500;
-    color: {pal["text_secondary"]};
+    font-weight: 600;
 }}
 
 QPushButton#FilterPill:hover {{
-    background-color: {pal["border_subtle"]};
-    color: {pal["text_primary"]};
+    background-color: {pal["btn_hover"]};
+    border-color: {pal["accent"]};
 }}
 
 QPushButton#FilterPill[active="true"] {{
     background-color: {pal["accent"]};
     color: {pal["accent_text"]};
     border-color: {pal["accent"]};
-    font-weight: 600;
+    font-weight: 700;
 }}
 
 /* Editor Inputs */
@@ -284,14 +300,21 @@ QTextBrowser#MarkdownPreview {{
 }}
 
 /* Segmented View Mode Tabs */
+QFrame#ModeSelectorFrame {{
+    background-color: {pal["pill_bg"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    padding: 2px;
+}}
+
 QPushButton#ModeTabButton {{
     background-color: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 6px 14px;
-    font-size: 13px;
-    font-weight: 600;
     color: {pal["text_secondary"]};
+    border: none;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
 }}
 
 QPushButton#ModeTabButton:hover {{
@@ -299,8 +322,76 @@ QPushButton#ModeTabButton:hover {{
 }}
 
 QPushButton#ModeTabButton[active="true"] {{
+    background-color: {pal["btn_bg"]};
     color: {pal["accent"]};
-    border-bottom: 2px solid {pal["accent"]};
+    border: 1px solid {pal["border_subtle"]};
+    font-weight: 700;
+}}
+
+/* Format Toolbar */
+QFrame#FormatToolbarFrame {{
+    background-color: {pal["btn_bg"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    padding: 3px 6px;
+}}
+
+QPushButton#FormatButton {{
+    background-color: transparent;
+    color: {pal["btn_text"]};
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: 600;
+}}
+
+QPushButton#FormatButton:hover {{
+    background-color: {pal["btn_hover"]};
+    border-color: {pal["border"]};
+}}
+
+/* Bottom Multi-Select Action Bar */
+QFrame#SelectionActionBar {{
+    background-color: {pal["action_bar_bg"]};
+    border: 2px solid {pal["action_bar_border"]};
+    border-radius: 12px;
+    padding: 8px 18px;
+}}
+
+QLabel#SelectionCountLabel {{
+    font-size: 14px;
+    font-weight: 700;
+    color: {pal["text_primary"]};
+}}
+
+QPushButton#SelectAllButton {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["btn_text"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+QPushButton#SelectAllButton:hover {{
+    background-color: {pal["btn_hover"]};
+    border-color: {pal["accent"]};
+}}
+
+QPushButton#DeleteSelectedButton {{
+    background-color: #DC2626;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 700;
+}}
+
+QPushButton#DeleteSelectedButton:hover {{
+    background-color: #B91C1C;
 }}
 
 /* Empty State Card */
@@ -308,10 +399,22 @@ QFrame#EmptyStateCard {{
     background-color: {pal["bg_surface"]};
     border: 1px dashed {pal["border"]};
     border-radius: 14px;
-    padding: 30px;
+    padding: 32px;
 }}
 
-/* Menus & Toolbars */
+QLabel#EmptyStateTitle {{
+    font-size: 16px;
+    font-weight: 700;
+    color: {pal["text_primary"]};
+}}
+
+QLabel#EmptyStateSubtitle {{
+    font-size: 13px;
+    font-weight: 500;
+    color: {pal["text_secondary"]};
+}}
+
+/* Menus */
 QMenu {{
     background-color: {pal["menu_bg"]};
     color: {pal["text_primary"]};
@@ -323,7 +426,9 @@ QMenu {{
 QMenu::item {{
     padding: 6px 18px;
     font-size: 13px;
+    font-weight: 500;
     border-radius: 4px;
+    color: {pal["text_primary"]};
 }}
 
 QMenu::item:selected {{
@@ -336,35 +441,35 @@ QMenu::item:selected {{
 def get_markdown_preview_css(theme: str = "light") -> str:
     """Generates theme-aware CSS for rendered Markdown preview."""
     if theme == "dark":
-        bg_body = "#1E1E22"
-        text_body = "#E4E4E7"
-        heading_color = "#FAFAFA"
-        code_bg = "rgba(255, 255, 255, 0.12)"
-        pre_bg = "#18181B"
-        border_color = "rgba(255, 255, 255, 0.12)"
+        bg_body = "#1E293B"
+        text_body = "#F8FAFC"
+        heading_color = "#FFFFFF"
+        code_bg = "rgba(255, 255, 255, 0.14)"
+        pre_bg = "#0F172A"
+        border_color = "#334155"
         link_color = "#38BDF8"
         quote_border = "#38BDF8"
-        quote_text = "#A1A1AA"
+        quote_text = "#CBD5E1"
     elif theme == "sepia":
         bg_body = "#FFFDF9"
-        text_body = "#3D332A"
-        heading_color = "#241D17"
+        text_body = "#2D2319"
+        heading_color = "#1D160F"
         code_bg = "rgba(61, 51, 42, 0.10)"
         pre_bg = "#F7F2E7"
-        border_color = "rgba(61, 51, 42, 0.12)"
+        border_color = "#D5C7B3"
         link_color = "#8C5A2B"
         quote_border = "#8C5A2B"
-        quote_text = "#786C5E"
+        quote_text = "#574737"
     else:  # light
         bg_body = "#FFFFFF"
-        text_body = "#24292F"
-        heading_color = "#1A1F2C"
-        code_bg = "rgba(175, 184, 193, 0.20)"
-        pre_bg = "#F6F8FA"
-        border_color = "#E1E4E8"
-        link_color = "#0969DA"
-        quote_border = "#0067C0"
-        quote_text = "#57606A"
+        text_body = "#0F172A"
+        heading_color = "#0F172A"
+        code_bg = "rgba(15, 23, 42, 0.08)"
+        pre_bg = "#F1F5F9"
+        border_color = "#CBD5E1"
+        link_color = "#2563EB"
+        quote_border = "#2563EB"
+        quote_text = "#334155"
 
     return f"""
 <style>
@@ -380,9 +485,9 @@ h1, h2, h3, h4 {{
     color: {heading_color};
     margin-top: 14px;
     margin-bottom: 8px;
-    font-weight: 600;
+    font-weight: 700;
 }}
-h1 {{ font-size: 1.6em; border-bottom: 1px solid {border_color}; padding-bottom: 4px; }}
+h1 {{ font-size: 1.6em; border-bottom: 2px solid {border_color}; padding-bottom: 4px; }}
 h2 {{ font-size: 1.3em; border-bottom: 1px solid {border_color}; padding-bottom: 3px; }}
 h3 {{ font-size: 1.1em; }}
 code {{
@@ -390,7 +495,8 @@ code {{
     border-radius: 4px;
     font-family: 'Cascadia Code', 'Consolas', monospace;
     padding: 2px 5px;
-    font-size: 85%;
+    font-size: 88%;
+    font-weight: 600;
 }}
 pre {{
     background-color: {pre_bg};
@@ -404,10 +510,11 @@ pre code {{
     padding: 0;
 }}
 blockquote {{
-    border-left: 3px solid {quote_border};
+    border-left: 4px solid {quote_border};
     color: {quote_text};
-    padding-left: 10px;
+    padding-left: 12px;
     margin-left: 0;
+    font-style: italic;
 }}
 ul, ol {{
     padding-left: 20px;
@@ -420,20 +527,20 @@ u {{
 }}
 del, s, strike {{
     text-decoration: line-through;
-    opacity: 0.65;
+    opacity: 0.70;
 }}
 img {{
     max-width: 100%;
     height: auto;
     border-radius: 8px;
     margin: 10px 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     display: block;
 }}
 a {{
     color: {link_color};
     text-decoration: none;
-    font-weight: 500;
+    font-weight: 600;
 }}
 a:hover {{
     text-decoration: underline;
@@ -441,6 +548,5 @@ a:hover {{
 </style>
 """
 
-# Backwards compatible defaults
 APP_STYLESHEET = generate_app_stylesheet("light")
 MARKDOWN_PREVIEW_CSS = get_markdown_preview_css("light")

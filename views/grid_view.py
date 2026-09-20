@@ -70,20 +70,8 @@ class StickyNotesGridView(QWidget):
 
         # "Select" Mode Toggle Button
         self.select_mode_btn = QPushButton("Select", self)
+        self.select_mode_btn.setObjectName("SelectModeButton")
         self.select_mode_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.select_mode_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid rgba(120, 120, 120, 0.25);
-                border-radius: 8px;
-                padding: 7px 14px;
-                font-size: 13px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: rgba(120, 120, 120, 0.10);
-            }
-        """)
         self.select_mode_btn.clicked.connect(self._toggle_selection_mode)
         header_layout.addWidget(self.select_mode_btn)
 
@@ -155,44 +143,25 @@ class StickyNotesGridView(QWidget):
         self.action_bar = QFrame(self)
         self.action_bar.setObjectName("SelectionActionBar")
         self.action_bar.setVisible(False)
-        self.action_bar.setStyleSheet("""
-            QFrame#SelectionActionBar {
-                background-color: rgba(120, 120, 120, 0.15);
-                border: 1px solid rgba(120, 120, 120, 0.25);
-                border-radius: 10px;
-                padding: 8px 16px;
-            }
-        """)
         action_layout = QHBoxLayout(self.action_bar)
-        action_layout.setContentsMargins(8, 4, 8, 4)
-        action_layout.setSpacing(12)
+        action_layout.setContentsMargins(14, 8, 14, 8)
+        action_layout.setSpacing(16)
 
         self.selection_count_label = QLabel("0 notes selected", self.action_bar)
-        self.selection_count_label.setStyleSheet("font-size: 13px; font-weight: 600;")
+        self.selection_count_label.setObjectName("SelectionCountLabel")
         action_layout.addWidget(self.selection_count_label)
 
         action_layout.addStretch()
 
         self.select_all_btn = QPushButton("Select All", self.action_bar)
+        self.select_all_btn.setObjectName("SelectAllButton")
         self.select_all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.select_all_btn.setStyleSheet("border: 1px solid rgba(120, 120, 120, 0.3); border-radius: 6px; padding: 5px 12px; font-size: 12px;")
         self.select_all_btn.clicked.connect(self._select_all_notes)
         action_layout.addWidget(self.select_all_btn)
 
         self.delete_selected_btn = QPushButton("🗑 Delete Selected", self.action_bar)
+        self.delete_selected_btn.setObjectName("DeleteSelectedButton")
         self.delete_selected_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.delete_selected_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #DC2626;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 14px;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background-color: #B91C1C; }
-        """)
         self.delete_selected_btn.clicked.connect(self._delete_selected_notes)
         action_layout.addWidget(self.delete_selected_btn)
 
@@ -276,9 +245,10 @@ class StickyNotesGridView(QWidget):
                 icon_lbl = QLabel("🔍", empty_frame)
                 icon_lbl.setStyleSheet("font-size: 32px;")
                 title_lbl = QLabel("No notes matched your search.", empty_frame)
-                title_lbl.setStyleSheet("font-size: 15px; font-weight: 600;")
+                title_lbl.setObjectName("EmptyStateTitle")
                 btn_clear = QPushButton("Clear Filter", empty_frame)
-                btn_clear.setStyleSheet("padding: 6px 14px; border-radius: 6px;")
+                btn_clear.setObjectName("SelectModeButton")
+                btn_clear.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 btn_clear.clicked.connect(self._clear_filters)
                 empty_layout.addWidget(icon_lbl, 0, Qt.AlignmentFlag.AlignCenter)
                 empty_layout.addWidget(title_lbl, 0, Qt.AlignmentFlag.AlignCenter)
@@ -287,9 +257,9 @@ class StickyNotesGridView(QWidget):
                 icon_lbl = QLabel("📝", empty_frame)
                 icon_lbl.setStyleSheet("font-size: 36px;")
                 title_lbl = QLabel("No notes yet.", empty_frame)
-                title_lbl.setStyleSheet("font-size: 16px; font-weight: 600;")
+                title_lbl.setObjectName("EmptyStateTitle")
                 sub_lbl = QLabel("Click '+ New Note' to create your first sticky note!", empty_frame)
-                sub_lbl.setStyleSheet("font-size: 13px; opacity: 0.7;")
+                sub_lbl.setObjectName("EmptyStateSubtitle")
                 empty_layout.addWidget(icon_lbl, 0, Qt.AlignmentFlag.AlignCenter)
                 empty_layout.addWidget(title_lbl, 0, Qt.AlignmentFlag.AlignCenter)
                 empty_layout.addWidget(sub_lbl, 0, Qt.AlignmentFlag.AlignCenter)

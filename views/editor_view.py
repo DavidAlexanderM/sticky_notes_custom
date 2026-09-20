@@ -79,8 +79,9 @@ class NoteEditorView(QWidget):
 
         # Mode Selector Buttons [Edit | Split | Preview]
         mode_frame = QFrame(self)
+        mode_frame.setObjectName("ModeSelectorFrame")
         mode_layout = QHBoxLayout(mode_frame)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setContentsMargins(2, 2, 2, 2)
         mode_layout.setSpacing(2)
 
         self.btn_edit = QPushButton("Edit", mode_frame)
@@ -105,43 +106,26 @@ class NoteEditorView(QWidget):
 
         # Quick Action Buttons (Duplicate & Share)
         self.dup_btn = QPushButton("📋", self)
+        self.dup_btn.setObjectName("EditorHeaderBtn")
         self.dup_btn.setToolTip("Duplicate Note")
-        self.dup_btn.setFixedSize(32, 30)
+        self.dup_btn.setFixedSize(34, 32)
         self.dup_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.dup_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid rgba(0, 0, 0, 0.12);
-                border-radius: 6px;
-                font-size: 13px;
-            }
-            QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
-        """)
         self.dup_btn.clicked.connect(self._duplicate_current_note)
         header_layout.addWidget(self.dup_btn)
 
         self.share_btn = QPushButton("↗", self)
+        self.share_btn.setObjectName("EditorHeaderBtn")
         self.share_btn.setToolTip("Share / Export Note")
-        self.share_btn.setFixedSize(32, 30)
+        self.share_btn.setFixedSize(34, 32)
         self.share_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.share_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid rgba(0, 0, 0, 0.12);
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
-        """)
         self.share_btn.clicked.connect(self._share_current_note)
         header_layout.addWidget(self.share_btn)
 
         # Theme Switcher Button (☀️ / 🌙)
         self.theme_mgr = get_theme_manager()
         self.theme_btn = QPushButton(self)
-        self.theme_btn.setObjectName("ThemeToggleBtn")
-        self.theme_btn.setFixedSize(32, 30)
+        self.theme_btn.setObjectName("EditorHeaderBtn")
+        self.theme_btn.setFixedSize(34, 32)
         self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.theme_btn.setToolTip("Toggle Light / Dark Theme")
         self.theme_btn.clicked.connect(self._toggle_theme)

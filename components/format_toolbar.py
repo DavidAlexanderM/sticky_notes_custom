@@ -9,29 +9,11 @@ class FormatButton(QPushButton):
     """Compact toolbar button styled in Fluent minimal aesthetic."""
     def __init__(self, text: str, tooltip: str = "", parent=None):
         super().__init__(text, parent)
+        self.setObjectName("FormatButton")
         if tooltip:
             self.setToolTip(tooltip)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setFixedHeight(28)
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 5px;
-                padding: 4px 8px;
-                font-size: 13px;
-                font-weight: 600;
-                color: #334155;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.06);
-                border-color: rgba(0, 0, 0, 0.1);
-                color: #0F172A;
-            }
-            QPushButton:pressed {
-                background-color: rgba(0, 0, 0, 0.1);
-            }
-        """)
 
 class FormatToolbar(QFrame):
     """
@@ -45,14 +27,6 @@ class FormatToolbar(QFrame):
         super().__init__(parent)
         self.editor = editor
         self.setObjectName("FormatToolbarFrame")
-        self.setStyleSheet("""
-            QFrame#FormatToolbarFrame {
-                background-color: #FFFFFF;
-                border: 1px solid rgba(0, 0, 0, 0.08);
-                border-radius: 7px;
-                padding: 2px 6px;
-            }
-        """)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 3, 4, 3)

@@ -126,16 +126,24 @@ class NoteCard(QFrame):
         self._apply_style()
 
     def _apply_style(self):
-        dark_mode = is_dark_color(self.color_hex)
-        text_color = "#FFFFFF" if dark_mode else "#1F2937"
-        subtext_color = "#D1D5DB" if dark_mode else "#4B5563"
-        muted_color = "#9CA3AF" if dark_mode else "#6B7280"
+        dark_card = is_dark_color(self.color_hex)
+        if dark_card:
+            text_color = "#FFFFFF"
+            subtext_color = "#F1F5F9"
+            date_color = "#E2E8F0"
+            badge_bg = "rgba(255, 255, 255, 0.15)"
+            border_color = "rgba(255, 255, 255, 0.25)"
+        else:
+            text_color = "#0F172A"
+            subtext_color = "#1E293B"
+            date_color = "#334155"
+            badge_bg = "rgba(0, 0, 0, 0.07)"
+            border_color = "rgba(0, 0, 0, 0.15)"
         
         if self.is_selected:
-            border_style = "2.5px solid #0067C0"
+            border_style = "2.5px solid #2563EB"
         else:
-            border_color = "rgba(255, 255, 255, 0.15)" if dark_mode else "rgba(0, 0, 0, 0.08)"
-            border_style = f"1px solid {border_color}"
+            border_style = f"1.5px solid {border_color}"
 
         self.setStyleSheet(f"""
             QFrame#NoteCardFrame {{
@@ -144,7 +152,7 @@ class NoteCard(QFrame):
                 border-radius: 12px;
             }}
             QFrame#NoteCardFrame:hover {{
-                border: 2px solid #0067C0;
+                border: 2px solid #2563EB;
             }}
             QLabel#CardTitle {{
                 color: {text_color};
@@ -160,13 +168,16 @@ class NoteCard(QFrame):
             }}
             QLabel#CardBadges {{
                 font-size: 11px;
-                background: transparent;
-                padding-top: 2px;
+                font-weight: 600;
+                color: {text_color};
+                background-color: {badge_bg};
+                border-radius: 4px;
+                padding: 2px 6px;
             }}
             QLabel#CardDate {{
-                color: {muted_color};
-                font-size: 10px;
-                font-weight: 500;
+                color: {date_color};
+                font-size: 11px;
+                font-weight: 600;
                 background: transparent;
             }}
         """)

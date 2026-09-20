@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.1] - 2026-09-19
+
+### Fixed
+- **UI Contrast & Readability Overhaul (WCAG AAA High Contrast):**
+  - Eliminated faint, unreadable gray text on bottom multi-selection action bar (`SelectionActionBar`).
+  - Added explicit contrast foreground colors (`#0F172A` in light mode, `#F8FAFC` in dark mode) for `select_mode_btn`, `select_all_btn`, `ThemeToggleBtn`, and `EditorHeaderBtn`.
+  - Replaced hardcoded inline styles in `FormatToolbarFrame` and `FormatButton` with theme-aware dynamic classes.
+  - Upgraded card titles, snippets, and timestamp typography across all card pastel colors to achieve maximum visual contrast and legibility.
+  - Polished empty state typography and mode selector tabs with high-contrast active and inactive states.
+
+---
+
 ## [1.4.0] - 2026-09-19
 
 ### Added
