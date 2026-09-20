@@ -25,7 +25,7 @@ except ImportError:
     from theme_manager import get_preferences_path
 
 GITHUB_REPO_OWNER = "DavidAlexanderM"
-GITHUB_REPO_NAME = "sticky_notes_app"
+GITHUB_REPO_NAME = "sticky_notes_custom"
 GITHUB_API_RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases/latest"
 
 PUBLIC_MIRROR_REPO_OWNER = "DavidAlexanderM"
@@ -206,61 +206,66 @@ class UpdateCheckWorker(QThread):
         self.mirror_url = mirror_url or get_stored_mirror_url()
 
     def run(self):
-        # Tier 1: Try Public Mirror if configured
-        mirror_err = None
-        if self.mirror_url:
+        try:
+            # Tier 1: Query Primary Repository via GitHub API (Direct & Zero-token when repo is public)
             try:
-                req = urllib.request.Request(self.mirror_url)
-                req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
-                req.add_header("Accept", "application/json, text/plain, */*")
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    if response.status == 200:
-                        payload = json.loads(response.read().decode("utf-8"))
-                        release_info = parse_release_payload(payload, source_name="public_mirror")
-                        self.check_finished.emit(release_info["has_update"], release_info)
-                        return
-            except Exception as e:
-                mirror_err = str(e)
-
-        # Tier 1.5: If default mirror raw manifest failed, try public mirror repo releases API
-        if not self.token and mirror_err:
-            try:
-                req = urllib.request.Request(PUBLIC_MIRROR_API_URL)
+                req = urllib.request.Request(GITHUB_API_RELEASES_URL)
                 req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
                 req.add_header("Accept", "application/vnd.github+json")
+
+                if self.token:
+                    req.add_header("Authorization", f"Bearer {self.token}")
+
                 with urllib.request.urlopen(req, timeout=10) as response:
                     if response.status == 200:
                         payload = json.loads(response.read().decode("utf-8"))
-                        release_info = parse_release_payload(payload, source_name="public_mirror")
+                        release_info = parse_release_payload(payload, source_name="github_repo")
                         self.check_finished.emit(release_info["has_update"], release_info)
                         return
             except Exception:
                 pass
 
-        # Tier 2: Query Primary Repository via GitHub API (requires token if repo is private)
-        try:
-            req = urllib.request.Request(GITHUB_API_RELEASES_URL)
-            req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
-            req.add_header("Accept", "application/vnd.github+json")
+            # Tier 2: Try Public Mirror if configured
+            mirror_err = None
+            if self.mirror_url:
+                try:
+                    req = urllib.request.Request(self.mirror_url)
+                    req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
+                    req.add_header("Accept", "application/json, text/plain, */*")
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        if response.status == 200:
+                            payload = json.loads(response.read().decode("utf-8"))
+                            release_info = parse_release_payload(payload, source_name="public_mirror")
+                            self.check_finished.emit(release_info["has_update"], release_info)
+                            return
+                except Exception as e:
+                    mirror_err = str(e)
 
-            if self.token:
-                req.add_header("Authorization", f"Bearer {self.token}")
+            # Tier 2.5: If default mirror raw manifest failed, try public mirror repo releases API
+            if not self.token and mirror_err:
+                try:
+                    req = urllib.request.Request(PUBLIC_MIRROR_API_URL)
+                    req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
+                    req.add_header("Accept", "application/vnd.github+json")
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        if response.status == 200:
+                            payload = json.loads(response.read().decode("utf-8"))
+                            release_info = parse_release_payload(payload, source_name="public_mirror")
+                            self.check_finished.emit(release_info["has_update"], release_info)
+                            return
+                except Exception:
+                    pass
 
-            with urllib.request.urlopen(req, timeout=12) as response:
-                if response.status != 200:
-                    self.check_failed.emit(f"GitHub returned HTTP {response.status}", False)
-                    return
-
-                payload = json.loads(response.read().decode("utf-8"))
-                release_info = parse_release_payload(payload, source_name="private_repo")
-                self.check_finished.emit(release_info["has_update"], release_info)
-                return
+            self.check_failed.emit(
+                "Unable to retrieve release metadata from GitHub or update feeds.",
+                not bool(self.token)
+            )
 
         except urllib.error.HTTPError as e:
             is_auth = e.code in (401, 403, 404)
             if is_auth and not self.token:
                 msg = (
-                    "Public mirror is currently not reachable and the primary repository is private. "
+                    "Public mirror is currently not reachable and the repository is private. "
                     "Please configure a GitHub Personal Access Token or verify your Mirror URL."
                 )
             else:
