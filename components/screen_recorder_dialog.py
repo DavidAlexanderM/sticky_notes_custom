@@ -297,14 +297,25 @@ class ScreenRecorderDialog(QDialog):
         if self.overlay:
             self.overlay.stop_btn.setEnabled(False)
             self.overlay.stop_btn.setText("Finalizing...")
-        self.recorder.stop_recording()
+        try:
+            self.recorder.stop_recording()
+        except Exception as e:
+            if self.overlay:
+                self.overlay.close()
+                self.overlay = None
+            self.show()
+            QMessageBox.critical(self, "Recording Error", f"Failed to stop screen capture cleanly:\n\n{str(e)}")
 
     def _cancel_capture(self):
-        self.recorder.cancel_recording()
-        if self.overlay:
-            self.overlay.close()
-            self.overlay = None
-        self.reject()
+        try:
+            self.recorder.cancel_recording()
+        except Exception:
+            pass
+        finally:
+            if self.overlay:
+                self.overlay.close()
+                self.overlay = None
+            self.reject()
 
     def _on_duration_changed(self, seconds: int):
         self.result_duration = seconds

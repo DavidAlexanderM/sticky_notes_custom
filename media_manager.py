@@ -291,7 +291,7 @@ class FrameCaptureThread(QThread):
 
     def stop(self):
         self.running = False
-        self.wait(timeout=6000)
+        self.wait(6000)
 
 
 class ScreenRecorder(QObject):

@@ -52,10 +52,11 @@ def generate_manifest(output_dir: Path = None, tag_name: str = None) -> Path:
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
-    # Also update root version.json if running in project root
-    root_manifest = PROJECT_ROOT / "version.json"
-    with open(root_manifest, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2)
+    # Also update root version.json if running for default dist directory
+    if output_dir == PROJECT_ROOT / "dist":
+        root_manifest = PROJECT_ROOT / "version.json"
+        with open(root_manifest, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
 
     print(f"[OK] Generated mirror manifest: {out_file} (v{clean_ver})")
     return out_file

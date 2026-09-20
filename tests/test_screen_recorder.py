@@ -52,6 +52,8 @@ class TestScreenRecorder(unittest.TestCase):
         self.assertEqual(thread.fps, 15)
         self.assertEqual(thread.output_file, "dummy.mp4")
         self.assertFalse(thread.running)
+        # Verify stop() executes cleanly without argument errors on QThread.wait
+        thread.stop()
 
     def test_overlay_hud_widget(self):
         overlay = ScreenRecordingOverlay()
