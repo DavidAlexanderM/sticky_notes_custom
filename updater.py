@@ -28,6 +28,11 @@ GITHUB_REPO_OWNER = "DavidAlexanderM"
 GITHUB_REPO_NAME = "sticky_notes_app"
 GITHUB_API_RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases/latest"
 
+PUBLIC_MIRROR_REPO_OWNER = "DavidAlexanderM"
+PUBLIC_MIRROR_REPO_NAME = "sticky_notes_releases"
+DEFAULT_PUBLIC_MANIFEST_URL = f"https://raw.githubusercontent.com/{PUBLIC_MIRROR_REPO_OWNER}/{PUBLIC_MIRROR_REPO_NAME}/main/version.json"
+PUBLIC_MIRROR_API_URL = f"https://api.github.com/repos/{PUBLIC_MIRROR_REPO_OWNER}/{PUBLIC_MIRROR_REPO_NAME}/releases/latest"
+
 
 def parse_version_tuple(version_str: str) -> Tuple[int, ...]:
     """Parses version strings like '1.5.4', 'v1.5.4', 'v1.5.4-alpha' into comparable tuples."""
@@ -86,19 +91,144 @@ def save_stored_github_token(token: str):
         pass
 
 
+def get_stored_mirror_url() -> str:
+    """Retrieves saved custom mirror URL from preferences or returns default."""
+    pref_file = get_preferences_path()
+    if pref_file.exists():
+        try:
+            with open(pref_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                url = data.get("mirror_url", "").strip()
+                if url:
+                    return url
+        except Exception:
+            pass
+    return DEFAULT_PUBLIC_MANIFEST_URL
+
+
+def save_stored_mirror_url(url: str):
+    """Persists custom mirror URL in preferences."""
+    pref_file = get_preferences_path()
+    data = {}
+    if pref_file.exists():
+        try:
+            with open(pref_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    data["mirror_url"] = url.strip()
+    try:
+        with open(pref_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def parse_release_payload(payload: dict, source_name: str = "mirror") -> dict:
+    """Extracts standardized release metadata from either GitHub API or version.json manifest."""
+    # Check if this is a version.json manifest format
+    if "version" in payload and ("browser_download_url" in payload or "asset_name" in payload):
+        tag_name = payload.get("tag_name") or f"v{payload.get('version')}"
+        remote_version = payload.get("version", "").lstrip("vV")
+        body = payload.get("body", "")
+        html_url = payload.get("html_url", "")
+        published_at = payload.get("published_at", "")
+        has_update = is_newer_version(remote_version, __version__)
+        return {
+            "version": remote_version,
+            "tag_name": tag_name,
+            "body": body,
+            "html_url": html_url,
+            "published_at": published_at,
+            "has_update": has_update,
+            "asset_name": payload.get("asset_name"),
+            "asset_size": payload.get("asset_size", 0),
+            "browser_download_url": payload.get("browser_download_url"),
+            "asset_api_url": payload.get("asset_api_url"),
+            "source": source_name,
+        }
+
+    # Otherwise treat as GitHub Release API payload
+    tag_name = payload.get("tag_name", "")
+    remote_version = tag_name.lstrip("vV")
+    body = payload.get("body", "")
+    html_url = payload.get("html_url", "")
+    published_at = payload.get("published_at", "")
+
+    assets = payload.get("assets", [])
+    zip_asset = None
+    for asset in assets:
+        name = asset.get("name", "").lower()
+        if name.endswith(".zip") and ("windows" in name or "stickynotes" in name):
+            zip_asset = asset
+            break
+    if not zip_asset and assets:
+        zip_asset = assets[0]
+
+    has_update = is_newer_version(remote_version, __version__)
+    return {
+        "version": remote_version,
+        "tag_name": tag_name,
+        "body": body,
+        "html_url": html_url,
+        "published_at": published_at,
+        "has_update": has_update,
+        "asset_name": zip_asset.get("name") if zip_asset else None,
+        "asset_size": zip_asset.get("size", 0) if zip_asset else 0,
+        "browser_download_url": zip_asset.get("browser_download_url") if zip_asset else None,
+        "asset_api_url": zip_asset.get("url") if zip_asset else None,
+        "source": source_name,
+    }
+
+
 class UpdateCheckWorker(QThread):
     """
-    Background worker that queries GitHub releases API without blocking the UI.
-    Supports optional GitHub PAT token for private repositories.
+    Background worker that queries software update feeds.
+    Multi-tier resolution:
+      1. Public Mirror Manifest / Endpoint (Zero token required)
+      2. Direct GitHub API (with optional PAT for private repository)
     """
     check_finished = Signal(bool, dict)  # (has_update, release_info)
     check_failed = Signal(str, bool)     # (error_message, is_auth_error)
 
-    def __init__(self, token: Optional[str] = None, parent: Optional[QObject] = None):
+    def __init__(self, token: Optional[str] = None, mirror_url: Optional[str] = None, parent: Optional[QObject] = None):
         super().__init__(parent)
         self.token = token or get_stored_github_token()
+        self.mirror_url = mirror_url or get_stored_mirror_url()
 
     def run(self):
+        # Tier 1: Try Public Mirror if configured
+        mirror_err = None
+        if self.mirror_url:
+            try:
+                req = urllib.request.Request(self.mirror_url)
+                req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
+                req.add_header("Accept", "application/json, text/plain, */*")
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    if response.status == 200:
+                        payload = json.loads(response.read().decode("utf-8"))
+                        release_info = parse_release_payload(payload, source_name="public_mirror")
+                        self.check_finished.emit(release_info["has_update"], release_info)
+                        return
+            except Exception as e:
+                mirror_err = str(e)
+
+        # Tier 1.5: If default mirror raw manifest failed, try public mirror repo releases API
+        if not self.token and mirror_err:
+            try:
+                req = urllib.request.Request(PUBLIC_MIRROR_API_URL)
+                req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
+                req.add_header("Accept", "application/vnd.github+json")
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    if response.status == 200:
+                        payload = json.loads(response.read().decode("utf-8"))
+                        release_info = parse_release_payload(payload, source_name="public_mirror")
+                        self.check_finished.emit(release_info["has_update"], release_info)
+                        return
+            except Exception:
+                pass
+
+        # Tier 2: Query Primary Repository via GitHub API (requires token if repo is private)
         try:
             req = urllib.request.Request(GITHUB_API_RELEASES_URL)
             req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
@@ -113,49 +243,22 @@ class UpdateCheckWorker(QThread):
                     return
 
                 payload = json.loads(response.read().decode("utf-8"))
-                tag_name = payload.get("tag_name", "")
-                remote_version = tag_name.lstrip("vV")
-                body = payload.get("body", "")
-                html_url = payload.get("html_url", "")
-                published_at = payload.get("published_at", "")
-
-                # Find Windows ZIP asset
-                assets = payload.get("assets", [])
-                zip_asset = None
-                for asset in assets:
-                    name = asset.get("name", "").lower()
-                    if name.endswith(".zip") and ("windows" in name or "stickynotes" in name):
-                        zip_asset = asset
-                        break
-                if not zip_asset and assets:
-                    zip_asset = assets[0]
-
-                has_update = is_newer_version(remote_version, __version__)
-
-                release_info = {
-                    "version": remote_version,
-                    "tag_name": tag_name,
-                    "body": body,
-                    "html_url": html_url,
-                    "published_at": published_at,
-                    "has_update": has_update,
-                    "asset_name": zip_asset.get("name") if zip_asset else None,
-                    "asset_size": zip_asset.get("size", 0) if zip_asset else 0,
-                    "browser_download_url": zip_asset.get("browser_download_url") if zip_asset else None,
-                    "asset_api_url": zip_asset.get("url") if zip_asset else None,
-                }
-
-                self.check_finished.emit(has_update, release_info)
+                release_info = parse_release_payload(payload, source_name="private_repo")
+                self.check_finished.emit(release_info["has_update"], release_info)
+                return
 
         except urllib.error.HTTPError as e:
             is_auth = e.code in (401, 403, 404)
             if is_auth and not self.token:
-                msg = "Repository is private or requires authorization. Please configure a GitHub Token."
+                msg = (
+                    "Public mirror is currently not reachable and the primary repository is private. "
+                    "Please configure a GitHub Personal Access Token or verify your Mirror URL."
+                )
             else:
                 msg = f"GitHub API Error: HTTP {e.code} ({e.reason})"
             self.check_failed.emit(msg, is_auth)
         except urllib.error.URLError as e:
-            self.check_failed.emit(f"Network error: Unable to reach GitHub ({e.reason})", False)
+            self.check_failed.emit(f"Network error: Unable to reach update servers ({e.reason})", False)
         except Exception as e:
             self.check_failed.emit(f"Update check failed: {str(e)}", False)
 
@@ -182,7 +285,7 @@ class UpdateDownloadWorker(QThread):
         try:
             # Determine download URL:
             # For private repos, query asset_api_url with Accept: application/octet-stream
-            if self.token and self.release_info.get("asset_api_url"):
+            if self.token and self.release_info.get("asset_api_url") and self.release_info.get("source") != "public_mirror":
                 download_url = self.release_info["asset_api_url"]
                 req = urllib.request.Request(download_url)
                 req.add_header("Authorization", f"Bearer {self.token}")

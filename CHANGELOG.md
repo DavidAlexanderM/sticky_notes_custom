@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.5.6] - 2026-09-20
+
+### Added & Improved
+- **Zero-Token Public Releases Mirror Architecture:**
+  - Integrated public feed support enabling end-users to check and install software updates with 1-click **without requiring any GitHub Personal Access Token (PAT)**.
+  - Multi-tier update resolution:
+    1. Queries the Public Mirror Feed (`https://raw.githubusercontent.com/DavidAlexanderM/sticky_notes_releases/main/version.json`) or mirror release endpoint anonymously.
+    2. Gracefully falls back to private repository querying (`DavidAlexanderM/sticky_notes_app`) if a Personal Access Token is configured.
+  - Added Update Settings UI in `UpdateDialog` to view the active feed source (`🌐 Public Releases Mirror` vs `🔒 GitHub Private API`), configure custom mirror URLs, test connectivity on demand, and restore default feeds.
+- **Automated CI/CD Mirroring Pipeline:**
+  - Enhanced GitHub Actions workflow (`.github/workflows/build.yml`) to automatically generate `version.json` release manifests via `scripts/generate_release_manifest.py`.
+  - Added automated release synchronization: when a version tag (`v*`) is pushed, CI compiles the Windows package and publishes it directly to both the private repository and the public companion mirror (`sticky_notes_releases`).
+  - Added complete setup documentation in `docs/PUBLIC_MIRROR_SETUP.md`.
+
 ---
 
 ## [1.5.5] - 2026-09-20

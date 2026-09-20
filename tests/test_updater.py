@@ -25,13 +25,16 @@ if app is None:
 from updater import (
     parse_version_tuple, is_newer_version,
     get_stored_github_token, save_stored_github_token,
+    get_stored_mirror_url, save_stored_mirror_url,
+    parse_release_payload, DEFAULT_PUBLIC_MANIFEST_URL,
     UpdateCheckWorker
 )
 from components.update_dialog import UpdateDialog
+from scripts.generate_release_manifest import generate_manifest
 
 
 class TestUpdater(unittest.TestCase):
-    """Verifies version parsing, comparison logic, and update dialog states."""
+    """Verifies version parsing, comparison logic, mirror feeds, and update dialog states."""
 
     def test_version_tuple_parsing(self):
         self.assertEqual(parse_version_tuple("1.5.4"), (1, 5, 4))
@@ -64,11 +67,55 @@ class TestUpdater(unittest.TestCase):
         save_stored_github_token("")
         self.assertIsNone(get_stored_github_token())
 
-    def test_update_dialog_instantiation(self):
+    def test_mirror_url_storage(self):
+        default_url = get_stored_mirror_url()
+        self.assertTrue(default_url.startswith("http"))
+
+        custom_url = "https://custom-mirror.example.com/version.json"
+        save_stored_mirror_url(custom_url)
+        self.assertEqual(get_stored_mirror_url(), custom_url)
+
+        # Restore default
+        save_stored_mirror_url(DEFAULT_PUBLIC_MANIFEST_URL)
+        self.assertEqual(get_stored_mirror_url(), DEFAULT_PUBLIC_MANIFEST_URL)
+
+    def test_parse_release_payload_mirror(self):
+        mock_manifest = {
+            "version": "1.6.0",
+            "tag_name": "v1.6.0",
+            "published_at": "2026-09-20T18:00:00Z",
+            "html_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/tag/v1.6.0",
+            "body": "- Zero-token public mirror support\n- Automated CI/CD sync",
+            "asset_name": "StickyNotes_v1.6.0_Windows.zip",
+            "asset_size": 75000000,
+            "browser_download_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.6.0/StickyNotes_v1.6.0_Windows.zip"
+        }
+        res = parse_release_payload(mock_manifest, source_name="public_mirror")
+        self.assertEqual(res["version"], "1.6.0")
+        self.assertEqual(res["tag_name"], "v1.6.0")
+        self.assertEqual(res["source"], "public_mirror")
+        self.assertTrue(res["has_update"])
+        self.assertEqual(res["asset_name"], "StickyNotes_v1.6.0_Windows.zip")
+        self.assertEqual(res["asset_size"], 75000000)
+
+    def test_manifest_generator_script(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            out_file = generate_manifest(output_dir=tmp_path, tag_name="v1.5.6")
+            self.assertTrue(out_file.exists())
+            import json
+            with open(out_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.assertEqual(data["version"], "1.5.6")
+            self.assertEqual(data["tag_name"], "v1.5.6")
+            self.assertIn("sticky_notes_releases", data["browser_download_url"])
+
+    def test_update_dialog_instantiation_and_settings(self):
         dialog = UpdateDialog(auto_check=False)
         self.assertIsNotNone(dialog.card)
         self.assertIsNotNone(dialog.token_settings_btn)
         self.assertIsNotNone(dialog.close_btn)
+        self.assertIsNotNone(dialog.source_lbl)
 
         # Verify up to date view rendering
         dialog._show_up_to_date()
@@ -84,10 +131,16 @@ class TestUpdater(unittest.TestCase):
             "published_at": "2026-09-20T12:00:00Z",
             "asset_name": "StickyNotes_v1.5.9_Windows.zip",
             "asset_size": 74000000,
-            "browser_download_url": "https://example.com/download.zip"
+            "browser_download_url": "https://example.com/download.zip",
+            "source": "public_mirror"
         }
         dialog._show_update_available(mock_release)
         self.assertEqual(dialog.release_info["version"], "1.5.9")
+
+        # Verify token & mirror settings card rendering
+        dialog._show_token_section()
+        self.assertIsNotNone(dialog.mirror_input)
+        self.assertIsNotNone(dialog.token_input)
 
         dialog.close()
 

@@ -20,7 +20,8 @@ try:
     from ..icons import get_themed_icon
     from ..updater import (
         UpdateCheckWorker, UpdateDownloadWorker, apply_update_and_restart,
-        get_stored_github_token, save_stored_github_token
+        get_stored_github_token, save_stored_github_token,
+        get_stored_mirror_url, save_stored_mirror_url, DEFAULT_PUBLIC_MANIFEST_URL
     )
 except ImportError:
     from version import __version__, HOMEPAGE
@@ -29,7 +30,8 @@ except ImportError:
     from icons import get_themed_icon
     from updater import (
         UpdateCheckWorker, UpdateDownloadWorker, apply_update_and_restart,
-        get_stored_github_token, save_stored_github_token
+        get_stored_github_token, save_stored_github_token,
+        get_stored_mirror_url, save_stored_mirror_url, DEFAULT_PUBLIC_MANIFEST_URL
     )
 
 
@@ -85,6 +87,10 @@ class UpdateDialog(QDialog):
         ver_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']}; background: transparent;")
         info_col.addWidget(ver_lbl)
 
+        self.source_lbl = QLabel("Feed: Auto-detecting...", header_frame)
+        self.source_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']}; background: transparent;")
+        info_col.addWidget(self.source_lbl)
+
         h_layout.addLayout(info_col)
         h_layout.addStretch()
 
@@ -113,7 +119,7 @@ class UpdateDialog(QDialog):
         # Bottom row
         bottom_row = QHBoxLayout()
         
-        self.token_settings_btn = QPushButton("🔑 GitHub Token...", self)
+        self.token_settings_btn = QPushButton("⚙️ Update Settings...", self)
         self.token_settings_btn.setObjectName("SelectModeButton")
         self.token_settings_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.token_settings_btn.clicked.connect(self._show_token_section)
@@ -335,10 +341,63 @@ class UpdateDialog(QDialog):
             self.card_layout.addWidget(retry_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
     def _append_token_form(self):
-        info = QLabel("Because your repository is private, GitHub requires a Personal Access Token (PAT) with <code>read:packages</code> or fine-grained <code>Contents: Read-only</code> permission.", self.card)
-        info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
-        info.setWordWrap(True)
-        self.card_layout.addWidget(info)
+        # Section 1: Public Mirror Feed URL
+        mirror_header = QLabel("<b>🌐 Public Releases Mirror Feed</b>", self.card)
+        mirror_header.setStyleSheet(f"font-size: 13px; color: {self.pal['text_primary']};")
+        self.card_layout.addWidget(mirror_header)
+
+        mirror_info = QLabel("Allows checking for and downloading updates without needing a personal GitHub token.", self.card)
+        mirror_info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
+        mirror_info.setWordWrap(True)
+        self.card_layout.addWidget(mirror_info)
+
+        self.mirror_input = QLineEdit(self.card)
+        self.mirror_input.setPlaceholderText("Mirror manifest URL (e.g. https://.../version.json)")
+        self.mirror_input.setText(get_stored_mirror_url())
+        self.mirror_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {self.pal['input_bg']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['input_border']};
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-family: monospace;
+                font-size: 11px;
+            }}
+        """)
+        self.card_layout.addWidget(self.mirror_input)
+
+        mirror_btn_row = QHBoxLayout()
+        test_mirror_btn = QPushButton("📡 Test Connection", self.card)
+        test_mirror_btn.setObjectName("SelectModeButton")
+        test_mirror_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        test_mirror_btn.clicked.connect(self._test_feed_connection)
+        mirror_btn_row.addWidget(test_mirror_btn)
+
+        reset_mirror_btn = QPushButton("↺ Default Mirror", self.card)
+        reset_mirror_btn.setObjectName("SelectModeButton")
+        reset_mirror_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        reset_mirror_btn.clicked.connect(lambda: self.mirror_input.setText(DEFAULT_PUBLIC_MANIFEST_URL))
+        mirror_btn_row.addWidget(reset_mirror_btn)
+
+        mirror_btn_row.addStretch()
+        self.card_layout.addLayout(mirror_btn_row)
+
+        # Separator
+        sep = QFrame(self.card)
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color: {self.pal['border']}; margin: 4px 0;")
+        self.card_layout.addWidget(sep)
+
+        # Section 2: GitHub Personal Access Token
+        token_header = QLabel("<b>🔒 Private GitHub Access Token (Optional)</b>", self.card)
+        token_header.setStyleSheet(f"font-size: 13px; color: {self.pal['text_primary']};")
+        self.card_layout.addWidget(token_header)
+
+        token_info = QLabel("Only required if querying the private repository directly instead of the public mirror.", self.card)
+        token_info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
+        token_info.setWordWrap(True)
+        self.card_layout.addWidget(token_info)
 
         self.token_input = QLineEdit(self.card)
         self.token_input.setPlaceholderText("Paste GitHub Personal Access Token (ghp_... or github_pat_...)")
@@ -367,7 +426,7 @@ class UpdateDialog(QDialog):
 
         row.addStretch()
 
-        save_btn = QPushButton("Save Token & Check", self.card)
+        save_btn = QPushButton("💾 Save Settings & Check", self.card)
         save_btn.setObjectName("NewNoteButton")
         save_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         save_btn.clicked.connect(self._save_token_and_check)
@@ -378,35 +437,82 @@ class UpdateDialog(QDialog):
 
     def _show_token_section(self):
         self._clear_card()
-        title = QLabel("🔑 GitHub Access Token Configuration", self.card)
+        title = QLabel("⚙️ Software Update Configuration", self.card)
         title.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {self.pal['text_primary']};")
         self.card_layout.addWidget(title)
         self._append_token_form()
+
+    def _test_feed_connection(self):
+        url = self.mirror_input.text().strip() if hasattr(self, 'mirror_input') else ""
+        if not url:
+            QMessageBox.warning(self, "Invalid URL", "Please specify a mirror URL.")
+            return
+
+        import urllib.request
+        try:
+            req = urllib.request.Request(url)
+            req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                if resp.status == 200:
+                    import json
+                    data = json.loads(resp.read().decode("utf-8"))
+                    version_str = data.get("version") or data.get("tag_name", "Unknown")
+                    QMessageBox.information(
+                        self,
+                        "Connection Successful",
+                        f"Successfully reached mirror feed!\n\nLatest reported version: {version_str}\nStatus: HTTP 200 OK"
+                    )
+                else:
+                    QMessageBox.warning(self, "Mirror Warning", f"Mirror returned HTTP {resp.status}")
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Mirror Unreachable",
+                f"Could not connect to mirror at:\n{url}\n\nError: {str(e)}\n\nNote: If the public mirror repository has not yet been populated, you can configure a GitHub PAT or wait for the initial GitHub Actions release."
+            )
 
     # --- Actions ---
 
     def _start_check(self):
         self._show_checking_state()
         token = get_stored_github_token()
-        self.check_worker = UpdateCheckWorker(token=token, parent=self)
+        mirror_url = get_stored_mirror_url()
+        self.check_worker = UpdateCheckWorker(token=token, mirror_url=mirror_url, parent=self)
         self.check_worker.check_finished.connect(self._on_check_finished)
         self.check_worker.check_failed.connect(self._on_check_failed)
         self.check_worker.start()
 
     def _on_check_finished(self, has_update: bool, release_info: dict):
+        if hasattr(self, 'source_lbl'):
+            src = release_info.get("source", "mirror")
+            if src == "public_mirror":
+                self.source_lbl.setText("🌐 Source: Public Mirror (Zero-Token)")
+            elif src == "private_repo":
+                self.source_lbl.setText("🔒 Source: GitHub Private API (Authenticated)")
+            else:
+                self.source_lbl.setText(f"📡 Source: {src}")
+
         if has_update:
             self._show_update_available(release_info)
         else:
             self._show_up_to_date()
 
     def _on_check_failed(self, error_msg: str, is_auth: bool):
+        if hasattr(self, 'source_lbl'):
+            self.source_lbl.setText("⚠️ Feed: Connection Failed")
         self._show_error_or_auth(error_msg, is_auth)
 
     def _save_token_and_check(self):
-        token = self.token_input.text().strip()
-        if token:
+        if hasattr(self, 'mirror_input'):
+            mirror_url = self.mirror_input.text().strip()
+            if mirror_url:
+                save_stored_mirror_url(mirror_url)
+
+        if hasattr(self, 'token_input'):
+            token = self.token_input.text().strip()
             save_stored_github_token(token)
-            QMessageBox.information(self, "Saved", "GitHub token saved securely.")
+
+        QMessageBox.information(self, "Settings Saved", "Update settings saved successfully.")
         self._start_check()
 
     def _start_download(self):

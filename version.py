@@ -2,8 +2,8 @@
 Sticky Notes - Centralized Version Metadata (Single Source of Truth)
 """
 
-__version__ = "1.5.5"
-__version_info__ = (1, 5, 5)
+__version__ = "1.5.6"
+__version_info__ = (1, 5, 6)
 __release_date__ = "2026-09-20"
 
 APP_NAME = "Sticky Notes"
