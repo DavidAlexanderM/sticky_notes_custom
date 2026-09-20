@@ -10,10 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Hashtag note categorization and auto-complete in editor.
-- Multi-language UI localization and full Right-to-Left (RTL) layout switching.
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
+
+## [1.6.4] - 2026-09-20
+
+### Added & Fixed
+- **Collapsible Tag Side Panel (`TagSidePanel`):**
+  - Dedicated left sidebar for 1-click note tag filtering, eliminating the need for keyboard-only hashtag typing.
+  - **Custom Tags Ordered FIRST:** User-created custom tags strictly appear at the top of the panel and selection flyouts for instant access, followed by predetermined system tags below.
+  - Live count badges dynamically tracking active notes per tag, with top filters for "All Notes" and "Untagged".
+  - Full tag management: Create custom tags with automatic color palette assignment, inline renaming, and deletion with cascading tag updates.
+- **1-Click Tag Assignment Flyout (`TagSelectorFlyout`):**
+  - Accessible via note card action menu (`Manage Tags...`) and editor view header (`🏷️`).
+  - Instant checkbox assignment with Custom Tags first, Predetermined Tags second, and inline new tag creation.
+- **Bilingual Internationalization Engine (`i18n.py`):**
+  - Instant runtime language switching between English and Spanish via header toggle button (`🌐 EN` / `🌐 ES`).
+  - Persistent language preference stored in `preferences.json`.
+  - Canonical cross-language predetermined tag matching, synchronizing counts and filters across English and Spanish.
+- **Visual Note Card Tag Badges (`NoteCard`):**
+  - Modern, subtle `#Tag` badge chips rendered directly on board note cards.
+- **Architectural Guardrails & UI Verification:**
+  - Automated headless snapshot generator (`capture_tags_verification.py`).
+  - Layout detachment safety (`setParent(None)`) preventing Qt deferred deletion ghosting.
 
 ## [1.6.3] - 2026-09-20
 

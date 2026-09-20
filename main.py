@@ -108,7 +108,7 @@ def main():
     )
     
     app = QApplication(sys.argv)
-    app.setApplicationName("Danielle's Sticky Notes")
+    app.setApplicationName(version.APP_NAME)
     ico_path = APP_DIR / "assets" / "icon.ico"
     if ico_path.exists():
         app.setWindowIcon(QIcon(str(ico_path)))
