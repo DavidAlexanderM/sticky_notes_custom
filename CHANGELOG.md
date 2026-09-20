@@ -15,6 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.5.8] - 2026-09-20
+
+### Added & Improved
+- **Desktop Screen Recording (`ScreenRecorder` & `ScreenRecorderDialog`):**
+  - Native hardware-accelerated desktop screen recording engine using Qt6's `QScreenCapture` and `QMediaRecorder` with Windows Media Foundation H.264 (`h264_mf`) MP4 encoding.
+  - Multi-monitor / display selector allowing users to record any connected monitor at native resolution.
+  - Optional synchronized microphone commentary / narration toggle with device selection.
+  - Compact, draggable floating HUD overlay widget (`ScreenRecordingOverlay`) that stays on top during capture with live recording indicator (`🔴 REC`), elapsed timer, and 1-click Stop/Cancel controls.
+  - Upgraded formatting toolbar **Video** button to offer an instant choice between `🔴 Record Desktop Screen...` and `📁 Choose Existing Video File...`.
+  - Automatic note integration: saves recordings directly into `attachments/` and embeds a playable markdown link.
+
+---
+
 ## [1.5.7] - 2026-09-20
 
 ### Added & Improved

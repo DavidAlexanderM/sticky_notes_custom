@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QFrame, 
-    QTextEdit
+    QTextEdit, QMenu
 )
 from PySide6.QtGui import QCursor, QTextCursor
 
@@ -37,6 +37,7 @@ class FormatToolbar(QFrame):
     add_picture_requested = Signal()
     add_audio_requested = Signal()
     add_video_requested = Signal()
+    record_screen_requested = Signal()
 
     def __init__(self, editor: QTextEdit, parent=None):
         super().__init__(parent)
@@ -102,11 +103,21 @@ class FormatToolbar(QFrame):
         layout.addWidget(self.btn_audio)
 
         # Media: Video
-        self.btn_video = FormatButton(text=" Video", icon_name="video", tooltip="Attach Video File", parent=self)
-        self.btn_video.clicked.connect(self.add_video_requested.emit)
+        self.btn_video = FormatButton(text=" Video", icon_name="video", tooltip="Record Desktop Screen or Attach Video", parent=self)
+        self.btn_video.clicked.connect(self._show_video_menu)
         layout.addWidget(self.btn_video)
 
         layout.addStretch()
+
+    def _show_video_menu(self):
+        menu = QMenu(self)
+        record_action = menu.addAction("🔴 Record Desktop Screen...")
+        record_action.triggered.connect(self.record_screen_requested.emit)
+
+        choose_action = menu.addAction("📁 Choose Existing Video File...")
+        choose_action.triggered.connect(self.add_video_requested.emit)
+
+        menu.exec(self.btn_video.mapToGlobal(self.btn_video.rect().bottomLeft()))
 
     def update_icons_for_theme(self, theme: str):
         """Updates all button vector icons when theme changes."""

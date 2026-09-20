@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, Signal, QUrl, QTimer
+from PySide6.QtGui import QGuiApplication, QScreen
 from PySide6.QtMultimedia import (
     QMediaRecorder, QAudioInput, QMediaCaptureSession, 
-    QMediaFormat, QMediaDevices
+    QMediaFormat, QMediaDevices, QScreenCapture
 )
 
 def get_available_microphones() -> list[str]:
@@ -199,3 +200,178 @@ class VoiceRecorder(QObject):
     def _on_tick(self):
         self.elapsed_seconds += 1
         self.duration_changed.emit(self.elapsed_seconds)
+
+
+def get_available_screens() -> list[QScreen]:
+    """Returns a list of connected QScreen monitor display objects."""
+    app = QGuiApplication.instance()
+    if app:
+        return QGuiApplication.screens()
+    return []
+
+
+class ScreenRecorder(QObject):
+    """
+    Hardware-accelerated desktop screen recorder using Qt6's QScreenCapture & QMediaRecorder.
+    Supports multi-monitor selection, optional microphone narration, and H.264 MP4 encoding.
+    """
+    duration_changed = Signal(int)       # Emits elapsed seconds
+    recording_finished = Signal(str)     # Emits path to recorded MP4 file
+    recording_error = Signal(str)        # Emits error description
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.session = QMediaCaptureSession(self)
+        self.screen_capture = QScreenCapture(self)
+        self.audio_input = None
+        self.recorder = QMediaRecorder(self)
+
+        self.session.setScreenCapture(self.screen_capture)
+        self.session.setRecorder(self.recorder)
+
+        # Configure video media format (H.264 MP4 preferred)
+        m_format = QMediaFormat()
+        supported_formats = m_format.supportedFileFormats(QMediaFormat.ConversionMode.Encode)
+        if QMediaFormat.FileFormat.MPEG4 in supported_formats:
+            m_format.setFileFormat(QMediaFormat.FileFormat.MPEG4)
+            video_codecs = m_format.supportedVideoCodecs(QMediaFormat.ConversionMode.Encode)
+            if QMediaFormat.VideoCodec.H264 in video_codecs:
+                m_format.setVideoCodec(QMediaFormat.VideoCodec.H264)
+            elif QMediaFormat.VideoCodec.MPEG4 in video_codecs:
+                m_format.setVideoCodec(QMediaFormat.VideoCodec.MPEG4)
+            m_format.setAudioCodec(QMediaFormat.AudioCodec.AAC)
+            self._extension = ".mp4"
+        elif QMediaFormat.FileFormat.WMV in supported_formats:
+            m_format.setFileFormat(QMediaFormat.FileFormat.WMV)
+            self._extension = ".wmv"
+        elif QMediaFormat.FileFormat.Matroska in supported_formats:
+            m_format.setFileFormat(QMediaFormat.FileFormat.Matroska)
+            self._extension = ".mkv"
+        else:
+            self._extension = ".mp4"
+
+        self.recorder.setMediaFormat(m_format)
+
+        # State tracking
+        self._stopping = False
+        self.recorder.recorderStateChanged.connect(self._on_recorder_state_changed)
+        self.recorder.errorOccurred.connect(self._on_recorder_error)
+
+        # Elapsed timer
+        self.timer = QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self._on_tick)
+        self.elapsed_seconds = 0
+        self.output_file_path = None
+
+        # Fallback safety flush timer
+        self._flush_timer = QTimer(self)
+        self._flush_timer.setSingleShot(True)
+        self._flush_timer.timeout.connect(self._finalize_and_verify)
+
+    def start_recording(self, screen: Optional[QScreen] = None, include_audio: bool = False, audio_device_name: Optional[str] = None) -> str:
+        """Starts recording screen video and returns the target file path."""
+        # Set screen to capture
+        if screen is None:
+            screens = get_available_screens()
+            screen = screens[0] if screens else None
+
+        if screen:
+            self.screen_capture.setScreen(screen)
+
+        # Set optional audio input
+        if include_audio:
+            if not self.audio_input:
+                self.audio_input = QAudioInput(self)
+                self.session.setAudioInput(self.audio_input)
+            if audio_device_name:
+                devices = QMediaDevices.audioInputs()
+                for d in devices:
+                    if d.description() == audio_device_name:
+                        self.audio_input.setDevice(d)
+                        break
+        else:
+            if self.audio_input:
+                self.session.setAudioInput(None)
+                self.audio_input.deleteLater()
+                self.audio_input = None
+
+        unique_name = f"screen_recording_{uuid.uuid4().hex[:8]}{self._extension}"
+        target_path = get_attachments_dir() / unique_name
+        self.output_file_path = str(target_path)
+        self._stopping = False
+
+        self.recorder.setOutputLocation(QUrl.fromLocalFile(self.output_file_path))
+        self.screen_capture.start()
+        self.recorder.record()
+
+        self.elapsed_seconds = 0
+        self.timer.start()
+        self.duration_changed.emit(0)
+        return self.output_file_path
+
+    def stop_recording(self):
+        """Asynchronously stops screen recording and finalizes MP4 file."""
+        self.timer.stop()
+        self._stopping = True
+        self.recorder.stop()
+        self.screen_capture.stop()
+        self._flush_timer.start(2500)
+
+    def _on_recorder_state_changed(self, state):
+        if state == QMediaRecorder.RecorderState.StoppedState and self._stopping:
+            self._flush_timer.stop()
+            self._finalize_and_verify()
+
+    def _on_recorder_error(self, error, error_string):
+        self.recording_error.emit(f"Screen recording failed: {error_string}")
+
+    def _finalize_and_verify(self):
+        if not self._stopping:
+            return
+        self._stopping = False
+
+        if not self.output_file_path:
+            self.recording_error.emit("No output file was specified for screen recording.")
+            return
+
+        out_path = Path(self.output_file_path)
+        if not out_path.exists():
+            self.recording_error.emit("Screen recording file was not created by the media system.")
+            return
+
+        size = out_path.stat().st_size
+        if size <= 1000:
+            try:
+                os.remove(self.output_file_path)
+            except Exception:
+                pass
+            self.recording_error.emit(
+                "Screen recording captured 0 frames or was stopped too quickly.\n\n"
+                "Please ensure desktop capture permissions are allowed."
+            )
+            return
+
+        self.recording_finished.emit(self.output_file_path)
+
+    def cancel_recording(self):
+        """Cancels recording and cleans up staging file."""
+        self.timer.stop()
+        self._flush_timer.stop()
+        self._stopping = False
+        self.recorder.stop()
+        self.screen_capture.stop()
+        if self.output_file_path and Path(self.output_file_path).exists():
+            try:
+                os.remove(self.output_file_path)
+            except Exception:
+                pass
+        self.output_file_path = None
+
+    def is_recording(self) -> bool:
+        return self.recorder.recorderState() == QMediaRecorder.RecorderState.RecordingState
+
+    def _on_tick(self):
+        self.elapsed_seconds += 1
+        self.duration_changed.emit(self.elapsed_seconds)
+

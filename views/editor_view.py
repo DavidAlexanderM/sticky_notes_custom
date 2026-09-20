@@ -13,6 +13,7 @@ try:
     from ..components.color_picker_flyout import ColorPickerFlyout
     from ..components.format_toolbar import FormatToolbar
     from ..components.voice_recorder_dialog import VoiceRecorderDialog
+    from ..components.screen_recorder_dialog import ScreenRecorderDialog
     from ..components.help_dialog import HelpAboutDialog
     from ..components.share_dialog import ShareNoteDialog
     from ..media_manager import copy_to_attachments, get_attachments_dir
@@ -26,6 +27,7 @@ except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from components.format_toolbar import FormatToolbar
     from components.voice_recorder_dialog import VoiceRecorderDialog
+    from components.screen_recorder_dialog import ScreenRecorderDialog
     from components.help_dialog import HelpAboutDialog
     from components.share_dialog import ShareNoteDialog
     from media_manager import copy_to_attachments, get_attachments_dir
@@ -250,6 +252,7 @@ class NoteEditorView(QWidget):
         self.format_toolbar.add_picture_requested.connect(self._on_add_picture)
         self.format_toolbar.add_audio_requested.connect(self._on_add_audio)
         self.format_toolbar.add_video_requested.connect(self._on_add_video)
+        self.format_toolbar.record_screen_requested.connect(self._on_record_screen)
         main_layout.addWidget(self.format_toolbar)
 
         main_layout.addWidget(self.splitter, 1)
@@ -630,6 +633,25 @@ class NoteEditorView(QWidget):
             cursor = self.editor.textCursor()
             cursor.insertText(f"\n🎥 [Watch Video: {copied.name}]({url})\n")
             self.editor.setFocus()
+
+    def _on_record_screen(self):
+        """Launches the Desktop Screen Recorder and embeds the recorded video upon completion."""
+        top_window = self.window()
+
+        dialog = ScreenRecorderDialog(self)
+        res = dialog.exec()
+
+        if top_window and top_window.isMinimized():
+            top_window.showNormal()
+            top_window.activateWindow()
+
+        if res == QDialog.DialogCode.Accepted and dialog.result_video_path:
+            path = Path(dialog.result_video_path)
+            url = QUrl.fromLocalFile(str(path)).toString()
+            cursor = self.editor.textCursor()
+            cursor.insertText(f"\n🎥 [Watch Screen Recording: {path.name}]({url})\n")
+            self.editor.setFocus()
+            self._auto_save()
 
     def _on_anchor_clicked(self, url: QUrl):
         """Open audio/video media files or links with security validation and in-app playback."""
