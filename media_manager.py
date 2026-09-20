@@ -9,8 +9,25 @@ from typing import Optional
 from PySide6.QtCore import QObject, Signal, QUrl, QTimer
 from PySide6.QtMultimedia import (
     QMediaRecorder, QAudioInput, QMediaCaptureSession, 
-    QMediaFormat
+    QMediaFormat, QMediaDevices
 )
+
+def get_available_microphones() -> list[str]:
+    """Returns a list of connected microphone descriptions."""
+    return [d.description() for d in QMediaDevices.audioInputs() if not d.isNull()]
+
+def has_microphone() -> bool:
+    """Checks if at least one audio capturing device (microphone) is available."""
+    inputs = QMediaDevices.audioInputs()
+    default_dev = QMediaDevices.defaultAudioInput()
+    return len(inputs) > 0 and not default_dev.isNull()
+
+def get_default_microphone_name() -> Optional[str]:
+    """Returns the name of the default microphone or None if none found."""
+    default_dev = QMediaDevices.defaultAudioInput()
+    if not default_dev.isNull():
+        return default_dev.description()
+    return None
 
 def get_attachments_dir() -> Path:
     """Returns the persistent directory where attachments are stored."""

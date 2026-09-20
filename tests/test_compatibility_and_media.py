@@ -74,6 +74,15 @@ def test_voice_recorder_initialization():
     assert recorder.audio_input is not None
     assert not recorder.is_recording()
 
+def test_audio_device_detection():
+    """Verify audio capturing device detection accurately queries Qt multimedia."""
+    has_mic = media_manager.has_microphone()
+    mics = media_manager.get_available_microphones()
+    default_mic = media_manager.get_default_microphone_name()
+    assert isinstance(has_mic, bool)
+    assert isinstance(mics, list)
+    print(f"   [DEVICE DETECTION] Microphone detected: {has_mic} | Total devices: {len(mics)} | Default: {default_mic}")
+
 
 # ============================================================================
 # 2. Multi-Language & Text Input Compatibility Tests
@@ -222,6 +231,7 @@ def run_all():
 
     run_test("Media Attachment Pipeline & Sanitization", test_media_attachment_pipeline)
     run_test("Voice Recorder Hardware Layer Initialization", test_voice_recorder_initialization)
+    run_test("Audio Capturing Device (Microphone) Detection", test_audio_device_detection)
     run_test("Multi-Language Database Roundtrip (UTF-8, RTL, CJK, Emojis)", test_multilanguage_database_roundtrip)
     run_test("Markdown2 International Script & HTML Rendering", test_markdown_rendering_compatibility)
 
