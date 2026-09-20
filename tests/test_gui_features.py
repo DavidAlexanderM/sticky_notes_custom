@@ -255,6 +255,50 @@ def test():
         self.assertIsNotNone(dialog.btn_save_html)
         dialog.close()
 
+    def test_note_stack_icon_rendering(self):
+        """Verify 3D layered note stack vector icon renders cleanly with project colors."""
+        for color in ["#F9AB00", "#34A853", "#4285F4", "#EA4335"]:
+            icon = icons.render_note_stack_icon(color, size=24)
+            self.assertFalse(icon.isNull(), f"Note stack icon for {color} should not be null")
+            pix = icons.render_note_stack_pixmap(color, size=24)
+            self.assertFalse(pix.isNull(), f"Note stack pixmap for {color} should not be null")
+            self.assertEqual(pix.width(), 24)
+            self.assertEqual(pix.height(), 24)
+
+    def test_color_swatches_and_sort_combo(self):
+        """Verify GridView contains color swatch icons for all colors and sort combobox."""
+        grid = StickyNotesGridView()
+        from styles import NOTE_COLORS
+        for c in NOTE_COLORS:
+            hex_val = c["hex"]
+            self.assertIn(hex_val, grid.pill_buttons)
+            btn = grid.pill_buttons[hex_val]
+            self.assertFalse(btn.icon().isNull(), f"Color pill for {c['name']} must have an icon")
+
+        self.assertIsNotNone(grid.sort_combo)
+        self.assertEqual(grid.sort_combo.count(), 5)
+        # Verify changing sort mode updates database preference
+        import database
+        grid.sort_combo.setCurrentIndex(1)  # created_asc
+        self.assertEqual(database.get_sort_preference(), "created_asc")
+        grid.close()
+
+    def test_help_dialog_about_storage_tab(self):
+        """Verify HelpAboutDialog About tab is wrapped in QScrollArea and has copyable path inputs."""
+        dialog = HelpAboutDialog()
+        self.assertEqual(dialog.tabs.count(), 3)
+        about_widget = dialog.tabs.widget(2)
+        from PySide6.QtWidgets import QScrollArea, QLineEdit
+        self.assertIsInstance(about_widget, QScrollArea)
+        
+        # Verify QLineEdits exist for paths inside the about widget
+        line_edits = about_widget.findChildren(QLineEdit)
+        self.assertGreaterEqual(len(line_edits), 2)
+        for le in line_edits:
+            self.assertTrue(le.isReadOnly())
+            self.assertTrue(len(le.text()) > 0)
+        dialog.close()
+
 
 if __name__ == "__main__":
     unittest.main()

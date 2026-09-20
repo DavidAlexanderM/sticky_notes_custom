@@ -337,6 +337,39 @@ QPushButton#FilterPill[active="true"] {{
     font-weight: 700;
 }}
 
+/* Sort Dropdown & Generic ComboBox */
+QComboBox#SortComboBox, QComboBox {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["btn_text"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    padding: 4px 10px 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+QComboBox#SortComboBox:hover, QComboBox:hover {{
+    background-color: {pal["btn_hover"]};
+    border-color: {pal["accent"]};
+}}
+
+QComboBox#SortComboBox::drop-down, QComboBox::drop-down {{
+    border: none;
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+}}
+
+QComboBox#SortComboBox QAbstractItemView, QComboBox QAbstractItemView {{
+    background-color: {pal["menu_bg"]};
+    color: {pal["text_primary"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 6px;
+    selection-background-color: {pal["btn_hover"]};
+    selection-color: {pal["accent"]};
+    padding: 4px;
+}}
+
 /* Editor Inputs */
 QLineEdit#NoteTitleInput {{
     font-size: 22px;

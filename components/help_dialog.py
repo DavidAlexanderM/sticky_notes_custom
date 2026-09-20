@@ -5,11 +5,11 @@ Theme-adaptive with full WCAG contrast and Antigravity 2.0 dark palette support.
 """
 
 from pathlib import Path
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QTabWidget, QWidget, QScrollArea,
-    QGridLayout, QFrame
+    QGridLayout, QFrame, QLineEdit, QApplication
 )
 from PySide6.QtGui import QDesktopServices, QCursor, QFont
 
@@ -39,8 +39,8 @@ class HelpAboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Sticky Notes - Help & About (v{__version__})")
-        self.resize(640, 520)
-        self.setMinimumSize(540, 420)
+        self.resize(680, 560)
+        self.setMinimumSize(560, 440)
         
         self.theme_mgr = get_theme_manager()
         self.theme_mgr.theme_changed.connect(self._on_theme_changed)
@@ -235,9 +235,13 @@ class HelpAboutDialog(QDialog):
         return scroll
 
     def _create_about_tab(self) -> QWidget:
-        """Tab 3: App metadata and storage directory paths."""
+        """Tab 3: App metadata and storage directory paths with scroll area and copyable inputs."""
         theme = self.theme_mgr.current_theme
         pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -250,6 +254,7 @@ class HelpAboutDialog(QDialog):
 
         subtitle = QLabel("Minimal Single-Window Markdown Desktop App with Offline Local Storage.")
         subtitle.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {pal['text_secondary']};")
+        subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
         info_box = QFrame()
@@ -258,31 +263,81 @@ class HelpAboutDialog(QDialog):
                 background-color: {pal['bg_main']};
                 border: 1px solid {pal['border']};
                 border-radius: 8px;
-                padding: 12px;
+                padding: 14px;
             }}
         """)
         info_layout = QVBoxLayout(info_box)
-        info_layout.setSpacing(8)
+        info_layout.setSpacing(12)
 
         db_path = str(get_db_path().resolve())
         attach_path = str(get_attachments_dir().resolve())
 
-        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>Author:</b> {AUTHOR}</span>"))
-        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>License:</b> {LICENSE}</span>"))
-        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>Database File:</b> <span style='font-family: monospace;'>{db_path}</span></span>"))
-        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>Attachments Folder:</b> <span style='font-family: monospace;'>{attach_path}</span></span>"))
+        # Metadata info
+        meta_layout = QHBoxLayout()
+        meta_layout.setSpacing(20)
+        lbl_author = QLabel(f"<span style='color: {pal['text_primary']};'><b>Author:</b> {AUTHOR}</span>")
+        lbl_license = QLabel(f"<span style='color: {pal['text_primary']};'><b>License:</b> {LICENSE}</span>")
+        meta_layout.addWidget(lbl_author)
+        meta_layout.addWidget(lbl_license)
+        meta_layout.addStretch()
+        info_layout.addLayout(meta_layout)
+
+        # Helper for copyable, clickable path entries
+        def _make_path_entry(label_text: str, path_val: str, is_dir: bool = False):
+            vbox = QVBoxLayout()
+            vbox.setSpacing(4)
+            lbl = QLabel(f"<span style='color: {pal['text_primary']}; font-weight: 700; font-size: 12px;'>{label_text}</span>")
+            vbox.addWidget(lbl)
+
+            row = QHBoxLayout()
+            row.setSpacing(6)
+
+            line_edit = QLineEdit(path_val)
+            line_edit.setReadOnly(True)
+            line_edit.setCursorPosition(0)
+            line_edit.setStyleSheet(f"""
+                QLineEdit {{
+                    background-color: {pal['input_bg']};
+                    color: {pal['text_primary']};
+                    border: 1px solid {pal['border']};
+                    border-radius: 6px;
+                    padding: 5px 8px;
+                    font-family: 'Cascadia Code', 'Consolas', monospace;
+                    font-size: 11px;
+                }}
+            """)
+            row.addWidget(line_edit, 1)
+
+            copy_btn = QPushButton("📋 Copy")
+            copy_btn.setObjectName("SelectModeButton")
+            copy_btn.setToolTip("Copy path to clipboard")
+            copy_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            def _on_copy(p=path_val, btn=copy_btn):
+                QApplication.clipboard().setText(p)
+                btn.setText("✓ Copied!")
+                QTimer.singleShot(1500, lambda: btn.setText("📋 Copy"))
+            copy_btn.clicked.connect(_on_copy)
+            row.addWidget(copy_btn)
+
+            open_btn = QPushButton("📂 Open")
+            open_btn.setObjectName("SelectModeButton")
+            open_btn.setToolTip("Open folder in Windows Explorer")
+            open_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            folder_target = path_val if is_dir else str(Path(path_val).parent)
+            open_btn.clicked.connect(lambda _, f=folder_target: QDesktopServices.openUrl(QUrl.fromLocalFile(f)))
+            row.addWidget(open_btn)
+
+            vbox.addLayout(row)
+            return vbox
+
+        info_layout.addLayout(_make_path_entry("Database SQLite File:", db_path, is_dir=False))
+        info_layout.addLayout(_make_path_entry("Attachments Vault Directory:", attach_path, is_dir=True))
+
         layout.addWidget(info_box)
 
         # Action buttons
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
-
-        open_folder_btn = QPushButton(" Open Attachments Folder", self)
-        open_folder_btn.setIcon(get_themed_icon("folder", role="btn_text", theme=theme, size=16))
-        open_folder_btn.setObjectName("SelectModeButton")
-        open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(attach_path)))
-        btn_layout.addWidget(open_folder_btn)
 
         github_btn = QPushButton(" GitHub Repository", self)
         github_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
@@ -302,7 +357,8 @@ class HelpAboutDialog(QDialog):
         layout.addLayout(btn_layout)
 
         layout.addStretch()
-        return container
+        scroll.setWidget(container)
+        return scroll
 
     def _open_update_dialog(self):
         """Displays the Software Update Center."""

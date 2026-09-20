@@ -237,14 +237,77 @@ def set_active_project_id(project_id: str) -> None:
 
 # --- Note Operations ---
 
-def get_all_notes(project_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetches all notes, optionally filtered by project stack."""
+SORT_MODES = {
+    "created_desc": "created_at DESC",
+    "created_asc": "created_at ASC",
+    "updated_desc": "updated_at DESC",
+    "updated_asc": "updated_at ASC",
+    "title_asc": "title COLLATE NOCASE ASC",
+}
+
+def get_sort_preference() -> str:
+    """Retrieves user sort preference from preferences or returns 'created_desc'."""
+    pref_file = get_preferences_path()
+    if pref_file.exists():
+        try:
+            import json
+            with open(pref_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                mode = data.get("sort_mode", "created_desc")
+                if mode in SORT_MODES:
+                    return mode
+        except Exception:
+            pass
+    return "created_desc"
+
+def set_sort_preference(sort_mode: str) -> None:
+    """Saves user sort preference to preferences."""
+    if sort_mode not in SORT_MODES:
+        sort_mode = "created_desc"
+    pref_file = get_preferences_path()
+    data = {}
+    if pref_file.exists():
+        try:
+            import json
+            with open(pref_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    data["sort_mode"] = sort_mode
+    try:
+        import json
+        with open(pref_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+QUERIES_BY_PROJECT = {
+    "created_desc": "SELECT * FROM notes WHERE project_id = ? ORDER BY created_at DESC",
+    "created_asc": "SELECT * FROM notes WHERE project_id = ? ORDER BY created_at ASC",
+    "updated_desc": "SELECT * FROM notes WHERE project_id = ? ORDER BY updated_at DESC",
+    "updated_asc": "SELECT * FROM notes WHERE project_id = ? ORDER BY updated_at ASC",
+    "title_asc": "SELECT * FROM notes WHERE project_id = ? ORDER BY title COLLATE NOCASE ASC",
+}
+
+QUERIES_ALL = {
+    "created_desc": "SELECT * FROM notes ORDER BY created_at DESC",
+    "created_asc": "SELECT * FROM notes ORDER BY created_at ASC",
+    "updated_desc": "SELECT * FROM notes ORDER BY updated_at DESC",
+    "updated_asc": "SELECT * FROM notes ORDER BY updated_at ASC",
+    "title_asc": "SELECT * FROM notes ORDER BY title COLLATE NOCASE ASC",
+}
+
+def get_all_notes(project_id: Optional[str] = None, sort_by: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches all notes, optionally filtered by project stack and sorted by the specified mode."""
+    mode = sort_by if sort_by in SORT_MODES else get_sort_preference()
+    if mode not in SORT_MODES:
+        mode = "created_desc"
     with get_connection() as conn:
         cursor = conn.cursor()
         if project_id and project_id != "all":
-            cursor.execute("SELECT * FROM notes WHERE project_id = ? ORDER BY updated_at DESC", (project_id,))
+            cursor.execute(QUERIES_BY_PROJECT[mode], (project_id,))
         else:
-            cursor.execute("SELECT * FROM notes ORDER BY updated_at DESC")
+            cursor.execute(QUERIES_ALL[mode])
         return [dict(row) for row in cursor.fetchall()]
 
 def get_note(note_id: str) -> Optional[Dict[str, Any]]:

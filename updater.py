@@ -145,6 +145,9 @@ def parse_release_payload(payload: dict, source_name: str = "mirror") -> dict:
             "asset_size": payload.get("asset_size", 0),
             "browser_download_url": payload.get("browser_download_url"),
             "asset_api_url": payload.get("asset_api_url"),
+            "installer_name": payload.get("installer_name"),
+            "installer_size": payload.get("installer_size", 0),
+            "installer_url": payload.get("installer_url"),
             "source": source_name,
         }
 
@@ -157,11 +160,14 @@ def parse_release_payload(payload: dict, source_name: str = "mirror") -> dict:
 
     assets = payload.get("assets", [])
     zip_asset = None
+    exe_asset = None
     for asset in assets:
         name = asset.get("name", "").lower()
         if name.endswith(".zip") and ("windows" in name or "stickynotes" in name):
             zip_asset = asset
-            break
+        elif name.endswith(".exe") and ("setup" in name or "installer" in name):
+            exe_asset = asset
+
     if not zip_asset and assets:
         zip_asset = assets[0]
 
@@ -177,6 +183,9 @@ def parse_release_payload(payload: dict, source_name: str = "mirror") -> dict:
         "asset_size": zip_asset.get("size", 0) if zip_asset else 0,
         "browser_download_url": zip_asset.get("browser_download_url") if zip_asset else None,
         "asset_api_url": zip_asset.get("url") if zip_asset else None,
+        "installer_name": exe_asset.get("name") if exe_asset else payload.get("installer_name"),
+        "installer_size": exe_asset.get("size", 0) if exe_asset else payload.get("installer_size", 0),
+        "installer_url": exe_asset.get("browser_download_url") if exe_asset else payload.get("installer_url"),
         "source": source_name,
     }
 
@@ -265,17 +274,18 @@ class UpdateCheckWorker(QThread):
 
 class UpdateDownloadWorker(QThread):
     """
-    Downloads release ZIP in background with granular progress tracking.
+    Downloads release ZIP or Setup EXE in background with granular progress tracking.
     Uses binary octet-stream accept header for authenticated private repo asset downloads.
     """
     progress = Signal(int, int, float)  # (bytes_downloaded, total_bytes, percent)
-    download_finished = Signal(str)     # (local_zip_path)
+    download_finished = Signal(str)     # (local_file_path)
     download_failed = Signal(str)       # (error_message)
 
-    def __init__(self, release_info: dict, token: Optional[str] = None, parent: Optional[QObject] = None):
+    def __init__(self, release_info: dict, token: Optional[str] = None, use_installer: bool = False, parent: Optional[QObject] = None):
         super().__init__(parent)
         self.release_info = release_info
         self.token = token or get_stored_github_token()
+        self.use_installer = use_installer
         self._is_cancelled = False
 
     def cancel(self):
@@ -284,17 +294,25 @@ class UpdateDownloadWorker(QThread):
     def run(self):
         try:
             # Determine download URL:
-            # For private repos, query asset_api_url with Accept: application/octet-stream
-            if self.token and self.release_info.get("asset_api_url") and self.release_info.get("source") != "public_mirror":
+            if self.use_installer and self.release_info.get("installer_url"):
+                download_url = self.release_info["installer_url"]
+                filename = self.release_info.get("installer_name") or f"StickyNotes_Setup_v{self.release_info.get('version')}.exe"
+                expected_size = self.release_info.get("installer_size", 0)
+                req = urllib.request.Request(download_url)
+            elif self.token and self.release_info.get("asset_api_url") and self.release_info.get("source") != "public_mirror":
                 download_url = self.release_info["asset_api_url"]
+                filename = self.release_info.get("asset_name") or f"StickyNotes_v{self.release_info.get('version')}.zip"
+                expected_size = self.release_info.get("asset_size", 0)
                 req = urllib.request.Request(download_url)
                 req.add_header("Authorization", f"Bearer {self.token}")
                 req.add_header("Accept", "application/octet-stream")
             else:
-                download_url = self.release_info.get("browser_download_url")
+                download_url = self.release_info.get("browser_download_url") or self.release_info.get("installer_url")
                 if not download_url:
-                    self.download_failed.emit("No downloadable Windows ZIP asset found in release.")
+                    self.download_failed.emit("No downloadable Windows asset found in release.")
                     return
+                filename = self.release_info.get("asset_name") or f"StickyNotes_v{self.release_info.get('version')}.zip"
+                expected_size = self.release_info.get("asset_size", 0)
                 req = urllib.request.Request(download_url)
 
             req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
@@ -302,11 +320,10 @@ class UpdateDownloadWorker(QThread):
             # Destination temporary file
             temp_dir = Path(tempfile.gettempdir()) / "StickyNotes_Update"
             temp_dir.mkdir(parents=True, exist_ok=True)
-            zip_filename = self.release_info.get("asset_name") or f"StickyNotes_v{self.release_info.get('version')}.zip"
-            dest_file = temp_dir / zip_filename
+            dest_file = temp_dir / filename
 
             with urllib.request.urlopen(req, timeout=30) as response, open(dest_file, "wb") as out_file:
-                total_bytes = int(response.headers.get("Content-Length") or self.release_info.get("asset_size", 0))
+                total_bytes = int(response.headers.get("Content-Length") or expected_size)
                 downloaded_bytes = 0
                 chunk_size = 64 * 1024  # 64 KB chunks
 
@@ -330,47 +347,92 @@ class UpdateDownloadWorker(QThread):
             self.download_failed.emit(f"Failed to download update: {str(e)}")
 
 
-def apply_update_and_restart(zip_path_str: str) -> bool:
+def apply_update_and_restart(file_path_str: str) -> bool:
     """
-    Extracts the updated package and executes an asynchronous Windows batch script
-    that swaps the application files once the current process exits, then relaunches.
+    Applies the downloaded update package (.exe installer or .zip archive) and
+    restarts Sticky Notes. In frozen production, replaces files or runs silent installer.
     """
-    zip_path = Path(zip_path_str)
-    if not zip_path.exists():
+    file_path = Path(file_path_str)
+    if not file_path.exists():
         return False
 
-    temp_extract_dir = zip_path.parent / "extracted"
+    is_frozen = getattr(sys, 'frozen', False)
+    current_pid = os.getpid()
+    bat_path = file_path.parent / "apply_update.bat"
+
+    # Case 1: Installer executable (.exe)
+    if file_path.suffix.lower() == ".exe":
+        installed_exe = Path(os.environ.get('LOCALAPPDATA', '')) / "Programs" / "StickyNotes" / "StickyNotes.exe"
+        target_exe = Path(sys.executable).resolve() if is_frozen else installed_exe
+
+        batch_script = f"""@echo off
+setlocal enabledelayedexpansion
+echo [Sticky Notes Updater] Waiting for application (PID {current_pid}) to close...
+
+:WAIT_LOOP
+tasklist /fi "pid eq {current_pid}" | find "{current_pid}" >nul
+if not errorlevel 1 (
+    ping 127.0.0.1 -n 2 >nul
+    goto WAIT_LOOP
+)
+
+echo [Sticky Notes Updater] Running installer...
+"{file_path}" /SILENT /CLOSEAPPLICATIONS
+
+echo [Sticky Notes Updater] Launching updated application...
+ping 127.0.0.1 -n 3 >nul
+if exist "{target_exe}" (
+    start "" "{target_exe}"
+) else if exist "{installed_exe}" (
+    start "" "{installed_exe}"
+)
+
+echo [Sticky Notes Updater] Cleaning up staging files...
+ping 127.0.0.1 -n 3 >nul
+del "{file_path}" >nul 2>&1
+(goto) 2>nul & del "%~f0"
+"""
+        with open(bat_path, "w", encoding="utf-8") as f:
+            f.write(batch_script)
+
+        subprocess.Popen(
+            ["cmd.exe", "/c", str(bat_path)],
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+            close_fds=True
+        )
+
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            app.quit()
+        sys.exit(0)
+
+    # Case 2: Zip package (.zip)
+    if not is_frozen:
+        # Development mode cannot overwrite running Python files with ZIP
+        return False
+
+    temp_extract_dir = file_path.parent / "extracted"
     if temp_extract_dir.exists():
         import shutil
         shutil.rmtree(temp_extract_dir, ignore_errors=True)
     temp_extract_dir.mkdir(parents=True, exist_ok=True)
 
-    # Extract downloaded zip
     try:
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        with zipfile.ZipFile(file_path, "r") as zip_ref:
             zip_ref.extractall(temp_extract_dir)
     except Exception as e:
         print(f"[ERROR] Failed to extract update ZIP: {e}")
         return False
 
-    # Find the folder containing StickyNotes.exe
     payload_dir = temp_extract_dir
     candidates = list(temp_extract_dir.glob("**/StickyNotes.exe"))
     if candidates:
         payload_dir = candidates[0].parent
 
-    # Target directory to overwrite
-    if getattr(sys, 'frozen', False):
-        app_target_dir = Path(sys.executable).resolve().parent
-        exe_path = Path(sys.executable).resolve()
-    else:
-        # Development mode: Cannot overwrite running python files in place
-        return False
+    app_target_dir = Path(sys.executable).resolve().parent
+    exe_path = Path(sys.executable).resolve()
 
-    current_pid = os.getpid()
-    bat_path = zip_path.parent / "apply_update.bat"
-
-    # Batch script waits for the existing process to terminate, copies files, and restarts
     batch_script = f"""@echo off
 setlocal enabledelayedexpansion
 echo [Sticky Notes Updater] Waiting for application (PID {current_pid}) to close...
@@ -378,7 +440,7 @@ echo [Sticky Notes Updater] Waiting for application (PID {current_pid}) to close
 :WAIT_LOOP
 tasklist /fi "pid eq {current_pid}" | find "{current_pid}" >nul
 if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
+    ping 127.0.0.1 -n 2 >nul
     goto WAIT_LOOP
 )
 
@@ -386,19 +448,19 @@ echo [Sticky Notes Updater] Applying update files...
 robocopy "{payload_dir}" "{app_target_dir}" /E /NP /R:3 /W:1 >nul
 
 echo [Sticky Notes Updater] Relaunching application...
+ping 127.0.0.1 -n 2 >nul
 start "" "{exe_path}"
 
 echo [Sticky Notes Updater] Cleaning up staging files...
-timeout /t 2 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 rd /s /q "{temp_extract_dir}" >nul 2>&1
-del "{zip_path}" >nul 2>&1
+del "{file_path}" >nul 2>&1
 (goto) 2>nul & del "%~f0"
 """
 
     with open(bat_path, "w", encoding="utf-8") as f:
         f.write(batch_script)
 
-    # Launch batch script in a detached process and terminate application
     subprocess.Popen(
         ["cmd.exe", "/c", str(bat_path)],
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,

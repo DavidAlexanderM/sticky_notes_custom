@@ -5,8 +5,8 @@ dynamically tinted to match Light, Dark, and Sepia themes.
 """
 
 from typing import Dict, Optional
-from PySide6.QtCore import QByteArray, QSize, Qt
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import QByteArray, QSize, Qt, QRectF
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
 from PySide6.QtSvg import QSvgRenderer
 
 try:
@@ -53,6 +53,7 @@ SVG_PATHS: Dict[str, str] = {
     "keyboard": '<rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6" y2="8"></line><line x1="10" y1="8" x2="10" y2="8"></line><line x1="14" y1="8" x2="14" y2="8"></line><line x1="18" y1="8" x2="18" y2="8"></line><line x1="6" y1="12" x2="6" y2="12"></line><line x1="10" y1="12" x2="10" y2="12"></line><line x1="14" y1="12" x2="14" y2="12"></line><line x1="18" y1="12" x2="18" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line>',
     "monitor": '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>',
     "folder": '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>',
+    "stack_notes": '<path d="M16 2H4a2 2 0 0 0-2 2v12"></path><path d="M20 6H8a2 2 0 0 0-2 2v12"></path><rect x="6" y="6" width="15" height="15" rx="2" ry="2"></rect><line x1="6" y1="10" x2="21" y2="10"></line>',
     "layers": '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
     "mail": '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>',
     "message_circle": '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>',
@@ -137,3 +138,71 @@ def get_themed_icon(
 
     color = color_map.get(role, pal.get("text_primary", "#0F172A"))
     return get_icon(name, color=color, size=size)
+
+
+def render_note_stack_pixmap(color_hex: str = "#8AB4F8", size: int = 20) -> QPixmap:
+    """
+    Renders a miniature 3D-styled physical stack of sticky notes:
+    - Layer 1 (bottom note sheet): offset slightly right and down with paper shadow
+    - Layer 2 (middle note sheet): intermediate offset
+    - Layer 3 (top note sheet): crisp front note filled with the project's accent color
+      and a classic top adhesive band.
+    """
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    scale = size / 24.0
+
+    # Layer 1: Bottom sheet
+    painter.save()
+    painter.translate(12 * scale, 12 * scale)
+    painter.rotate(5.0)
+    painter.translate(-12 * scale, -12 * scale)
+    bottom_rect = QRectF(5.0 * scale, 4.5 * scale, 14.5 * scale, 14.5 * scale)
+    painter.setBrush(QColor("#CBD5E1"))
+    painter.setPen(QPen(QColor("#94A3B8"), 1.0 * scale))
+    painter.drawRoundedRect(bottom_rect, 2.0 * scale, 2.0 * scale)
+    painter.restore()
+
+    # Layer 2: Middle sheet
+    painter.save()
+    painter.translate(12 * scale, 12 * scale)
+    painter.rotate(-3.5)
+    painter.translate(-12 * scale, -12 * scale)
+    mid_rect = QRectF(3.5 * scale, 4.0 * scale, 15.0 * scale, 15.0 * scale)
+    painter.setBrush(QColor("#E2E8F0"))
+    painter.setPen(QPen(QColor("#94A3B8"), 1.0 * scale))
+    painter.drawRoundedRect(mid_rect, 2.0 * scale, 2.0 * scale)
+    painter.restore()
+
+    # Layer 3: Top note sheet (facing forward, colored with project accent)
+    top_rect = QRectF(2.5 * scale, 4.0 * scale, 15.5 * scale, 15.5 * scale)
+    accent_qcolor = QColor(color_hex)
+    painter.setBrush(accent_qcolor)
+    darker_border = accent_qcolor.darker(135)
+    painter.setPen(QPen(darker_border, 1.2 * scale))
+    painter.drawRoundedRect(top_rect, 2.2 * scale, 2.2 * scale)
+
+    # Adhesive strip on top of the front note
+    adhesive_rect = QRectF(2.5 * scale, 4.0 * scale, 15.5 * scale, 3.8 * scale)
+    strip_color = accent_qcolor.darker(118)
+    painter.setBrush(strip_color)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawRoundedRect(adhesive_rect, 2.0 * scale, 2.0 * scale)
+
+    painter.end()
+    return pixmap
+
+
+def render_note_stack_icon(color_hex: str = "#8AB4F8", size: int = 20) -> QIcon:
+    """Returns a QIcon representing a stylized stack of sticky notes with project color."""
+    cache_key = f"stack_{color_hex}_{size}"
+    if cache_key in _ICON_CACHE:
+        return _ICON_CACHE[cache_key]
+    pix = render_note_stack_pixmap(color_hex, size=size)
+    icon = QIcon(pix)
+    _ICON_CACHE[cache_key] = icon
+    return icon

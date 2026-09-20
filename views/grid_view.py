@@ -9,9 +9,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QScrollArea, QGridLayout, 
-    QFrame, QMessageBox, QFileDialog, QApplication, QMenu
+    QFrame, QMessageBox, QFileDialog, QApplication, QMenu, QComboBox
 )
-from PySide6.QtGui import QCursor, QKeyEvent
+from PySide6.QtGui import QCursor, QKeyEvent, QIcon, QPixmap, QPainter, QColor, QBrush, QPen
 import markdown2
 
 try:
@@ -21,7 +21,7 @@ try:
     from ..components.project_dialog import NewProjectDialog, ManageProjectsDialog
     from ..styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from ..theme_manager import get_theme_manager
-    from ..icons import get_themed_icon
+    from ..icons import get_themed_icon, render_note_stack_icon
     from .. import database
 except ImportError:
     from components.note_card import NoteCard
@@ -30,8 +30,21 @@ except ImportError:
     from components.project_dialog import NewProjectDialog, ManageProjectsDialog
     from styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
     from theme_manager import get_theme_manager
-    from icons import get_themed_icon
+    from icons import get_themed_icon, render_note_stack_icon
     import database
+
+
+def create_color_swatch_icon(color_hex: str, size: int = 14) -> QIcon:
+    """Renders a crisp circular color swatch icon for filter pills."""
+    pix = QPixmap(size, size)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QBrush(QColor(color_hex)))
+    painter.setPen(QPen(QColor(0, 0, 0, 60), 1))
+    painter.drawEllipse(1, 1, size - 2, size - 2)
+    painter.end()
+    return QIcon(pix)
 
 
 class StickyNotesGridView(QWidget):
@@ -117,13 +130,13 @@ class StickyNotesGridView(QWidget):
         self.search_input.textChanged.connect(self._on_search_changed)
         search_filter_layout.addWidget(self.search_input)
 
-        # Color Filter Chips
+        # Color Filter Chips & Sort Selector Bar
         chips_layout = QHBoxLayout()
         chips_layout.setSpacing(6)
         chips_layout.setContentsMargins(0, 0, 0, 0)
 
         self.pill_buttons = {}
-        all_pill = QPushButton("All Notes", self)
+        all_pill = QPushButton(" All Notes", self)
         all_pill.setObjectName("FilterPill")
         all_pill.setProperty("active", True)
         all_pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -131,17 +144,45 @@ class StickyNotesGridView(QWidget):
         chips_layout.addWidget(all_pill)
         self.pill_buttons[None] = all_pill
 
-        for c in NOTE_COLORS[:6]:  # Top 6 popular colors
+        for c in NOTE_COLORS:
             hex_val = c["hex"]
-            pill = QPushButton(f"● {c['name'].split()[0]}", self)
+            display_name = c["name"].replace("Soft ", "").replace("Light ", "").replace("Pale ", "").replace("Muted ", "")
+            pill = QPushButton(f" {display_name}", self)
             pill.setObjectName("FilterPill")
             pill.setProperty("active", False)
+            pill.setIcon(create_color_swatch_icon(hex_val, 13))
+            pill.setToolTip(f"Filter notes by color: {c['name']}")
             pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             pill.clicked.connect(lambda _, h=hex_val: self._set_color_filter(h))
             chips_layout.addWidget(pill)
             self.pill_buttons[hex_val] = pill
 
         chips_layout.addStretch()
+
+        # Sort Dropdown
+        sort_lbl = QLabel("Sort:", self)
+        sort_lbl.setStyleSheet("font-size: 12px; font-weight: 600;")
+        chips_layout.addWidget(sort_lbl)
+
+        self.sort_combo = QComboBox(self)
+        self.sort_combo.setObjectName("SortComboBox")
+        self.sort_combo.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.sort_combo.addItem("📅 Created (Newest)", "created_desc")
+        self.sort_combo.addItem("📅 Created (Oldest)", "created_asc")
+        self.sort_combo.addItem("⏱️ Recently Edited", "updated_desc")
+        self.sort_combo.addItem("⏱️ Oldest Edited", "updated_asc")
+        self.sort_combo.addItem("🔤 Title (A-Z)", "title_asc")
+
+        # Set initial sort selection based on persisted preference
+        saved_sort = database.get_sort_preference()
+        for idx in range(self.sort_combo.count()):
+            if self.sort_combo.itemData(idx) == saved_sort:
+                self.sort_combo.setCurrentIndex(idx)
+                break
+
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        chips_layout.addWidget(self.sort_combo)
+
         search_filter_layout.addLayout(chips_layout)
 
         self.main_layout.addLayout(search_filter_layout)
@@ -279,7 +320,7 @@ class StickyNotesGridView(QWidget):
         
         if self.active_project_id == "all":
             self.project_btn.setText(f" All Notes ({all_count}) ▾")
-            self.project_btn.setIcon(get_themed_icon("layers", role="btn_text", theme=theme, size=15))
+            self.project_btn.setIcon(get_themed_icon("layers", role="btn_text", theme=theme, size=16))
             self.project_btn.setToolTip("Active Collection: All Notes\nClick to switch project stack")
             return
 
@@ -292,8 +333,9 @@ class StickyNotesGridView(QWidget):
 
         name = active_proj["name"] if active_proj else "General Notes"
         count = active_proj.get("note_count", 0) if active_proj else 0
+        p_color = active_proj.get("color", "#F9AB00") if active_proj else "#F9AB00"
         self.project_btn.setText(f" {name} ({count}) ▾")
-        self.project_btn.setIcon(get_themed_icon("folder", role="btn_text", theme=theme, size=15))
+        self.project_btn.setIcon(render_note_stack_icon(p_color, size=18))
         self.project_btn.setToolTip(f"Active Stack: {name}\nClick to switch project stack")
 
     def _show_project_menu(self):
@@ -335,7 +377,7 @@ class StickyNotesGridView(QWidget):
         all_count = sum(p.get("note_count", 0) for p in projects)
 
         # "All Notes" option
-        act_all = menu.addAction(get_themed_icon("layers", role="btn_text", theme=theme, size=15), f"All Notes ({all_count})")
+        act_all = menu.addAction(get_themed_icon("layers", role="btn_text", theme=theme, size=16), f"All Notes ({all_count})")
         act_all.setCheckable(True)
         act_all.setChecked(self.active_project_id == "all")
 
@@ -347,7 +389,8 @@ class StickyNotesGridView(QWidget):
             p_id = p["id"]
             p_name = p["name"]
             p_count = p.get("note_count", 0)
-            act = menu.addAction(get_themed_icon("folder", role="btn_text", theme=theme, size=15), f"{p_name} ({p_count})")
+            p_color = p.get("color", "#F9AB00")
+            act = menu.addAction(render_note_stack_icon(p_color, size=16), f"{p_name} ({p_count})")
             act.setCheckable(True)
             act.setChecked(self.active_project_id == p_id)
             project_actions[act] = p_id
@@ -407,7 +450,8 @@ class StickyNotesGridView(QWidget):
         for p in projects:
             p_id = p["id"]
             p_name = p["name"]
-            act = menu.addAction(get_themed_icon("folder", role="btn_text", theme=theme, size=15), f"Move to {p_name}")
+            p_color = p.get("color", "#F9AB00")
+            act = menu.addAction(render_note_stack_icon(p_color, size=16), f"Move to {p_name}")
             project_actions[act] = p_id
 
         pos = self.move_selected_btn.mapToGlobal(self.move_selected_btn.rect().topLeft())
@@ -481,6 +525,18 @@ class StickyNotesGridView(QWidget):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
         self._filter_and_render_notes()
+
+    def _on_sort_changed(self, index: int):
+        """Triggered when the user changes the sort dropdown."""
+        sort_mode = self.sort_combo.itemData(index)
+        if sort_mode:
+            database.set_sort_preference(sort_mode)
+            self.load_notes()
+
+    def _clear_filters(self):
+        """Clears search input and resets active color filter."""
+        self.search_input.clear()
+        self._set_color_filter(None)
 
     def _on_search_changed(self, text: str):
         self._filter_and_render_notes()

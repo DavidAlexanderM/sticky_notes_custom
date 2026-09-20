@@ -15,6 +15,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.2] - 2026-09-20
+
+### Added & Fixed
+- **Color Filter Swatches & Sort by Creation Date:**
+  - Replaced text-only chips with circular, anti-aliased real color swatches for all 8 sticky note colors with tooltips and active focus indicators.
+  - Added Sort Dropdown selector (`📅 Created (Newest)`, `📅 Created (Oldest)`, `⏱️ Recently Edited`, `⏱️ Oldest Edited`, `🔤 Title (A-Z)`) with persistent user preference in `preferences.json`.
+- **Physical Note Stack Visuals for Projects:**
+  - Implemented 3D vector layered note stack icons (`render_note_stack_icon`) featuring multi-layer offset post-its with drop shadow depth and dynamic project accent coloring.
+  - Applied note stack icons across the main project switcher button, dropdown menu, and NoteCard "Move to Stack" menus.
+- **Help & Storage Diagnostics Readability:**
+  - Wrapped the About & Storage tab in a dedicated `QScrollArea` with increased default dialog dimensions (`680x560`) to eliminate text clipping.
+  - Enhanced Database and Attachments path display with read-only `QLineEdit` fields, 1-click `📋 Copy` buttons with status feedback, and `📂 Open Folder` shortcuts.
+- **PowerToys & Windows Auto Theme Switching:**
+  - Resolved `QByteArray` type mismatch in `_WindowsThemeEventFilter` native event listener and added `WM_THEMECHANGED (0x031A)` alongside `WM_SETTINGCHANGE (0x001A)`.
+  - Connected Qt 6.5+ native `QGuiApplication.styleHints().colorSchemeChanged` signal for zero-latency cross-platform theme change notifications.
+  - Inspected both `AppsUseLightTheme` and `SystemUsesLightTheme` Windows registry keys, ensuring full compatibility with PowerToys dark mode toggles.
+- **Auto-Updater Windows Execution & Relaunch:**
+  - Replaced input-redirected `timeout` calls in detached batch scripts with failsafe `ping 127.0.0.1 -n 2 >nul`.
+  - Added native standalone installer executable (`.exe`) detection and background silent installation (`/SILENT /CLOSEAPPLICATIONS`).
+  - Improved Development Mode messaging and added direct installer launching via safe `os.startfile`.
+
+---
+
 ## [1.6.1] - 2026-09-20
 
 ### Added & Fixed

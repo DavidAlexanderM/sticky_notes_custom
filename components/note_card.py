@@ -10,11 +10,11 @@ from PySide6.QtGui import QColor, QCursor, QMouseEvent, QEnterEvent
 try:
     from .color_picker_flyout import ColorPickerFlyout
     from ..styles import is_dark_color
-    from ..icons import get_icon
+    from ..icons import get_icon, render_note_stack_icon
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from styles import is_dark_color
-    from icons import get_icon
+    from icons import get_icon, render_note_stack_icon
 
 
 class NoteCard(QFrame):
@@ -370,14 +370,15 @@ class NoteCard(QFrame):
                 import database
             projects = database.get_all_projects()
             if projects:
-                move_menu = menu.addMenu(get_icon("folder", color=text_color, size=16), "Move to Stack")
+                move_menu = menu.addMenu(render_note_stack_icon("#8AB4F8", size=16), "Move to Stack")
                 current_pid = self.note.get("project_id", "default")
                 for p in projects:
                     p_id = p["id"]
                     p_name = p["name"]
+                    p_color = p.get("color", "#F9AB00")
                     is_cur = (p_id == current_pid)
                     item_text = f"✓ {p_name} (Current)" if is_cur else p_name
-                    act_p = move_menu.addAction(item_text)
+                    act_p = move_menu.addAction(render_note_stack_icon(p_color, size=15), item_text)
                     act_p.setEnabled(not is_cur)
                     project_actions[act_p] = p_id
         except Exception:

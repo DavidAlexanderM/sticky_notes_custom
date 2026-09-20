@@ -290,6 +290,9 @@ class UpdateDialog(QDialog):
     def _show_install_ready(self, zip_path: str):
         self._clear_card()
         self.downloaded_zip_path = zip_path
+        file_path = Path(zip_path)
+        is_exe = file_path.suffix.lower() == ".exe"
+        is_frozen = getattr(sys, 'frozen', False)
 
         icon_lbl = QLabel(self.card)
         icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -301,7 +304,14 @@ class UpdateDialog(QDialog):
         title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
         self.card_layout.addWidget(title)
 
-        msg = QLabel("Sticky Notes will restart to replace the application files with the new version.", self.card)
+        if is_frozen:
+            msg_text = "Sticky Notes will close, install the updated files, and automatically relaunch the newest version."
+        elif is_exe:
+            msg_text = "The standalone Windows installer has been downloaded. Click below to run the setup wizard and update Sticky Notes."
+        else:
+            msg_text = f"The update archive is ready at:\n{file_path}\n\nYou are running Sticky Notes in Python development mode."
+
+        msg = QLabel(msg_text, self.card)
         msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         msg.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']};")
         msg.setWordWrap(True)
@@ -311,11 +321,32 @@ class UpdateDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        restart_btn = QPushButton("🚀 Restart & Apply Update Now", self.card)
-        restart_btn.setObjectName("NewNoteButton")
-        restart_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        restart_btn.clicked.connect(self._apply_update)
-        btn_row.addWidget(restart_btn)
+
+        if is_frozen:
+            restart_btn = QPushButton("🚀 Restart & Apply Update Now", self.card)
+            restart_btn.setObjectName("NewNoteButton")
+            restart_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            restart_btn.clicked.connect(self._apply_update)
+            btn_row.addWidget(restart_btn)
+        elif is_exe:
+            run_installer_btn = QPushButton("🚀 Run Installer Now", self.card)
+            run_installer_btn.setObjectName("NewNoteButton")
+            run_installer_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            run_installer_btn.clicked.connect(self._apply_update)
+            btn_row.addWidget(run_installer_btn)
+
+            open_folder_btn = QPushButton("📂 Open Folder", self.card)
+            open_folder_btn.setObjectName("SelectModeButton")
+            open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent))))
+            btn_row.addWidget(open_folder_btn)
+        else:
+            open_folder_btn = QPushButton("📂 Open Downloaded Package", self.card)
+            open_folder_btn.setObjectName("NewNoteButton")
+            open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent))))
+            btn_row.addWidget(open_folder_btn)
+
         btn_row.addStretch()
         self.card_layout.addLayout(btn_row)
 
@@ -515,12 +546,17 @@ class UpdateDialog(QDialog):
         QMessageBox.information(self, "Settings Saved", "Update settings saved successfully.")
         self._start_check()
 
-    def _start_download(self):
+    def _start_download(self, use_installer: bool = False):
         if not self.release_info:
             return
         self._show_downloading_state()
         token = get_stored_github_token()
-        self.download_worker = UpdateDownloadWorker(self.release_info, token=token, parent=self)
+        # Prefer installer (.exe) if available for seamless silent update & desktop integration
+        has_installer = bool(self.release_info.get("installer_url"))
+        download_installer = use_installer or has_installer
+        self.download_worker = UpdateDownloadWorker(
+            self.release_info, token=token, use_installer=download_installer, parent=self
+        )
         self.download_worker.progress.connect(self._on_download_progress)
         self.download_worker.download_finished.connect(self._on_download_finished)
         self.download_worker.download_failed.connect(self._on_download_failed)
@@ -539,8 +575,8 @@ class UpdateDialog(QDialog):
             self.download_worker.cancel()
         self._show_update_available(self.release_info)
 
-    def _on_download_finished(self, zip_path: str):
-        self._show_install_ready(zip_path)
+    def _on_download_finished(self, file_path: str):
+        self._show_install_ready(file_path)
 
     def _on_download_failed(self, err_msg: str):
         QMessageBox.warning(self, "Download Error", err_msg)
@@ -552,14 +588,24 @@ class UpdateDialog(QDialog):
     def _apply_update(self):
         if not self.downloaded_zip_path:
             return
-        # Test if frozen or source
-        import sys
-        if getattr(sys, 'frozen', False):
-            apply_update_and_restart(self.downloaded_zip_path)
+        file_path = Path(self.downloaded_zip_path)
+        is_frozen = getattr(sys, 'frozen', False)
+        is_exe = file_path.suffix.lower() == ".exe"
+
+        if is_frozen:
+            apply_update_and_restart(str(file_path))
+        elif is_exe:
+            import os
+            if hasattr(os, 'startfile'):
+                os.startfile(str(file_path))
+            else:
+                import subprocess
+                subprocess.Popen([str(file_path)])
+            self.accept()
         else:
             QMessageBox.information(
                 self,
                 "Development Mode",
-                f"Update package successfully downloaded to:\n{self.downloaded_zip_path}\n\nIn development mode, please run git pull or extract the ZIP."
+                f"Update package successfully downloaded to:\n{file_path}\n\nIn development mode, please run git pull or extract the ZIP."
             )
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self.downloaded_zip_path).parent)))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent)))
