@@ -262,14 +262,23 @@ QPushButton#BackButton {{
     color: {pal["btn_text"]};
     border: 1px solid {pal["border"]};
     border-radius: 8px;
-    padding: 6px 14px;
-    font-size: 16px;
-    font-weight: 700;
+    padding: 6px;
 }}
 
 QPushButton#BackButton:hover {{
     background-color: {pal["btn_hover"]};
     border-color: {pal["accent"]};
+}}
+
+QPushButton#CardMenuBtn, QPushButton#CardPaletteBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 2px;
+}}
+
+QPushButton#CardMenuBtn:hover, QPushButton#CardPaletteBtn:hover {{
+    background-color: rgba(128, 128, 128, 0.20);
 }}
 
 /* Modern Search Bar */

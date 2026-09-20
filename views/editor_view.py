@@ -17,6 +17,8 @@ try:
     from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from ..security import is_safe_url, sanitize_markdown_html
     from ..theme_manager import get_theme_manager
+    from ..icons import get_themed_icon
+    from ..markdown_highlighter import MarkdownHighlighter
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
@@ -26,7 +28,66 @@ except ImportError:
     from styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from security import is_safe_url, sanitize_markdown_html
     from theme_manager import get_theme_manager
+    from icons import get_themed_icon
+    from markdown_highlighter import MarkdownHighlighter
     import database
+
+
+class MarkdownTextEdit(QTextEdit):
+    """
+    Enhanced QTextEdit supporting Drag & Drop of image, audio, and video files.
+    """
+    media_dropped = Signal(str, str)  # (media_type, local_file_path)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+
+    def is_supported_media_mime(self, mime_data) -> bool:
+        """Returns True if mime data contains supported local media file URLs."""
+        if mime_data and mime_data.hasUrls():
+            for url in mime_data.urls():
+                if url.isLocalFile():
+                    suffix = Path(url.toLocalFile()).suffix.lower()
+                    if suffix in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp',
+                                  '.wav', '.m4a', '.mp3', '.ogg', '.flac', '.aac',
+                                  '.mp4', '.webm', '.mov', '.mkv', '.avi'):
+                        return True
+        return False
+
+    def dragEnterEvent(self, event):
+        if self.is_supported_media_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            handled = False
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    local_path = url.toLocalFile()
+                    suffix = Path(local_path).suffix.lower()
+                    if suffix in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'):
+                        self.media_dropped.emit("image", local_path)
+                        handled = True
+                    elif suffix in ('.wav', '.m4a', '.mp3', '.ogg', '.flac', '.aac'):
+                        self.media_dropped.emit("audio", local_path)
+                        handled = True
+                    elif suffix in ('.mp4', '.webm', '.mov', '.mkv', '.avi'):
+                        self.media_dropped.emit("video", local_path)
+                        handled = True
+            if handled:
+                event.acceptProposedAction()
+                return
+        super().dropEvent(event)
+
 
 class NoteEditorView(QWidget):
     """
@@ -56,7 +117,7 @@ class NoteEditorView(QWidget):
         header_layout.setSpacing(12)
 
         # Back Navigation Arrow Button
-        self.back_btn = QPushButton("←", self)
+        self.back_btn = QPushButton(self)
         self.back_btn.setObjectName("BackButton")
         self.back_btn.setToolTip("Return to Notes (Esc)")
         self.back_btn.setFixedSize(38, 34)
@@ -107,7 +168,7 @@ class NoteEditorView(QWidget):
         header_layout.addWidget(mode_frame)
 
         # Quick Action Buttons (Duplicate & Share)
-        self.dup_btn = QPushButton("📋", self)
+        self.dup_btn = QPushButton(self)
         self.dup_btn.setObjectName("EditorHeaderBtn")
         self.dup_btn.setToolTip("Duplicate Note")
         self.dup_btn.setFixedSize(36, 34)
@@ -115,7 +176,7 @@ class NoteEditorView(QWidget):
         self.dup_btn.clicked.connect(self._duplicate_current_note)
         header_layout.addWidget(self.dup_btn)
 
-        self.share_btn = QPushButton("↗", self)
+        self.share_btn = QPushButton(self)
         self.share_btn.setObjectName("EditorHeaderBtn")
         self.share_btn.setToolTip("Share / Export Note")
         self.share_btn.setFixedSize(36, 34)
@@ -123,7 +184,7 @@ class NoteEditorView(QWidget):
         self.share_btn.clicked.connect(self._share_current_note)
         header_layout.addWidget(self.share_btn)
 
-        # Theme Switcher Button (☀️ / 🌙)
+        # Theme Switcher Button (Sun / Moon)
         self.theme_mgr = get_theme_manager()
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("EditorHeaderBtn")
@@ -131,9 +192,9 @@ class NoteEditorView(QWidget):
         self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.theme_btn.setToolTip("Toggle Light / Dark Theme")
         self.theme_btn.clicked.connect(self._toggle_theme)
-        self._update_theme_btn_label()
         header_layout.addWidget(self.theme_btn)
 
+        self._update_header_icons()
         self.theme_mgr.theme_changed.connect(self._on_theme_changed)
 
         main_layout.addLayout(header_layout)
@@ -152,11 +213,15 @@ class NoteEditorView(QWidget):
             }
         """)
 
-        # Raw Markdown Text Editor
-        self.editor = QTextEdit(self.splitter)
+        # Raw Markdown Text Editor with Drag & Drop
+        self.editor = MarkdownTextEdit(self.splitter)
         self.editor.setObjectName("MarkdownEditor")
         self.editor.setPlaceholderText("Write your note here in Markdown...\n\n# Heading\n- Bullet item\n**Bold text**\n`code`")
         self.editor.textChanged.connect(self._on_content_changed)
+        self.editor.media_dropped.connect(self._on_media_dropped)
+
+        # Attach Live In-Editor Markdown Highlighter
+        self.highlighter = MarkdownHighlighter(self.editor.document(), theme=self.theme_mgr.current_theme)
 
         # Rendered Markdown Browser
         self.preview = QTextBrowser(self.splitter)
@@ -185,13 +250,13 @@ class NoteEditorView(QWidget):
         player_layout.setContentsMargins(12, 6, 12, 6)
         player_layout.setSpacing(10)
 
-        self.play_pause_btn = QPushButton("⏸", self.audio_player_frame)
+        self.play_pause_btn = QPushButton(self.audio_player_frame)
         self.play_pause_btn.setFixedSize(32, 30)
         self.play_pause_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.play_pause_btn.clicked.connect(self._toggle_audio_playback)
         player_layout.addWidget(self.play_pause_btn)
 
-        self.audio_title_label = QLabel("🎵 Audio", self.audio_player_frame)
+        self.audio_title_label = QLabel("Audio", self.audio_player_frame)
         self.audio_title_label.setStyleSheet("font-weight: 600; font-size: 12px;")
         player_layout.addWidget(self.audio_title_label)
 
@@ -204,14 +269,14 @@ class NoteEditorView(QWidget):
         self.audio_time_label.setObjectName("AudioTimeLabel")
         player_layout.addWidget(self.audio_time_label)
 
-        self.external_play_btn = QPushButton("↗", self.audio_player_frame)
+        self.external_play_btn = QPushButton(self.audio_player_frame)
         self.external_play_btn.setToolTip("Open in external media player")
         self.external_play_btn.setFixedSize(30, 28)
         self.external_play_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.external_play_btn.clicked.connect(self._open_audio_externally)
         player_layout.addWidget(self.external_play_btn)
 
-        self.close_player_btn = QPushButton("✕", self.audio_player_frame)
+        self.close_player_btn = QPushButton(self.audio_player_frame)
         self.close_player_btn.setToolTip("Close Player")
         self.close_player_btn.setFixedSize(28, 28)
         self.close_player_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -339,12 +404,20 @@ class NoteEditorView(QWidget):
         full_html = f"<!DOCTYPE html><html><head><meta charset=\"utf-8\">{css}</head><body>{safe_html_body}</body></html>"
         self.preview.setHtml(full_html)
 
-    def _update_theme_btn_label(self):
-        """Updates editor theme button icon."""
-        if self.theme_mgr.is_dark_mode():
-            self.theme_btn.setText("☀️")
-        else:
-            self.theme_btn.setText("🌙")
+    def _update_header_icons(self):
+        """Updates all header and player button vector icons dynamically based on current theme."""
+        theme = self.theme_mgr.current_theme
+        self.back_btn.setIcon(get_themed_icon("arrow_left", role="btn_text", theme=theme, size=18))
+        self.dup_btn.setIcon(get_themed_icon("copy", role="btn_text", theme=theme, size=18))
+        self.share_btn.setIcon(get_themed_icon("share", role="btn_text", theme=theme, size=18))
+        is_dark = self.theme_mgr.is_dark_mode()
+        self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=18))
+
+        # Audio player buttons
+        is_playing = hasattr(self, 'media_player') and self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        self.play_pause_btn.setIcon(get_themed_icon("pause" if is_playing else "play", role="btn_text", theme=theme, size=16))
+        self.external_play_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
+        self.close_player_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=16))
 
     def _toggle_theme(self):
         self.theme_mgr.toggle_theme()
@@ -353,9 +426,31 @@ class NoteEditorView(QWidget):
             app.setStyleSheet(self.theme_mgr.get_app_stylesheet())
 
     def _on_theme_changed(self, new_theme: str):
-        self._update_theme_btn_label()
+        self._update_header_icons()
+        if hasattr(self, 'highlighter'):
+            self.highlighter.set_theme(new_theme)
+        if hasattr(self, 'format_toolbar'):
+            self.format_toolbar.update_icons_for_theme(new_theme)
         if self.preview.isVisible():
             self._render_markdown()
+
+    def _on_media_dropped(self, media_type: str, file_path: str):
+        """Handles drag-and-dropped media files by copying to attachments and inserting markdown tag."""
+        try:
+            copied = copy_to_attachments(file_path)
+        except ValueError as e:
+            QMessageBox.warning(self, "Security Alert", str(e))
+            return
+
+        url = QUrl.fromLocalFile(str(copied)).toString()
+        cursor = self.editor.textCursor()
+        if media_type == "image":
+            cursor.insertText(f"\n![{copied.stem}]({url})\n")
+        elif media_type == "audio":
+            cursor.insertText(f"\n🎵 [Play Voice Note: {copied.name}]({url})\n")
+        elif media_type == "video":
+            cursor.insertText(f"\n🎥 [Watch Video: {copied.name}]({url})\n")
+        self.editor.setFocus()
 
     def _auto_save(self):
         if not self.current_note_id:
@@ -572,10 +667,11 @@ class NoteEditorView(QWidget):
         self._update_time_label(self.media_player.position(), dur_ms)
 
     def _on_player_state_changed(self, state):
+        theme = self.theme_mgr.current_theme
         if state == QMediaPlayer.PlaybackState.PlayingState:
-            self.play_pause_btn.setText("⏸")
+            self.play_pause_btn.setIcon(get_themed_icon("pause", role="btn_text", theme=theme, size=16))
         else:
-            self.play_pause_btn.setText("▶")
+            self.play_pause_btn.setIcon(get_themed_icon("play", role="btn_text", theme=theme, size=16))
 
     def _update_time_label(self, current_ms: int, total_ms: int):
         cur_sec = current_ms // 1000

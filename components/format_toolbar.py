@@ -1,23 +1,38 @@
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QFrame, 
     QTextEdit
 )
 from PySide6.QtGui import QCursor, QTextCursor
 
+try:
+    from ..icons import get_themed_icon
+except ImportError:
+    from icons import get_themed_icon
+
+
 class FormatButton(QPushButton):
-    """Compact toolbar button styled in Fluent minimal aesthetic."""
-    def __init__(self, text: str, tooltip: str = "", parent=None):
+    """Compact toolbar button styled in Fluent minimal aesthetic with crisp vector icons."""
+    def __init__(self, text: str = "", icon_name: str = None, tooltip: str = "", parent=None):
         super().__init__(text, parent)
         self.setObjectName("FormatButton")
+        self.icon_name = icon_name
         if tooltip:
             self.setToolTip(tooltip)
+        if icon_name:
+            self.setIcon(get_themed_icon(icon_name, role="btn_text", size=16))
+            self.setIconSize(QSize(16, 16))
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setFixedHeight(28)
 
+    def update_icon_theme(self, theme: str):
+        if self.icon_name:
+            self.setIcon(get_themed_icon(self.icon_name, role="btn_text", theme=theme, size=16))
+
+
 class FormatToolbar(QFrame):
     """
-    Rich text formatting and media attachment toolbar.
+    Rich text formatting and media attachment toolbar with vector SVG iconography.
     """
     add_picture_requested = Signal()
     add_audio_requested = Signal()
@@ -29,75 +44,79 @@ class FormatToolbar(QFrame):
         self.setObjectName("FormatToolbarFrame")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 3, 4, 3)
+        layout.setContentsMargins(6, 3, 6, 3)
         layout.setSpacing(4)
 
-        # Bold (B)
-        self.btn_bold = FormatButton("B", "Bold (Ctrl+B)", self)
-        self.btn_bold.setStyleSheet(self.btn_bold.styleSheet() + "font-weight: 800; font-family: 'Times New Roman', serif; font-size: 14px;")
+        # Bold
+        self.btn_bold = FormatButton(icon_name="bold", tooltip="Bold (Ctrl+B)", parent=self)
         self.btn_bold.clicked.connect(self.apply_bold)
         layout.addWidget(self.btn_bold)
 
-        # Italics (I)
-        self.btn_italic = FormatButton("I", "Italics (Ctrl+I)", self)
+        # Italics
+        self.btn_italic = FormatButton(icon_name="italic", tooltip="Italics (Ctrl+I)", parent=self)
         self.btn_italic.clicked.connect(self.apply_italic)
         layout.addWidget(self.btn_italic)
 
-        # Underline (U)
-        self.btn_underline = FormatButton("U", "Underline (Ctrl+U)", self)
+        # Underline
+        self.btn_underline = FormatButton(icon_name="underline", tooltip="Underline (Ctrl+U)", parent=self)
         self.btn_underline.clicked.connect(self.apply_underline)
         layout.addWidget(self.btn_underline)
 
-        # Strikethrough (S)
-        self.btn_strike = FormatButton("S", "Strikethrough", self)
+        # Strikethrough
+        self.btn_strike = FormatButton(icon_name="strikethrough", tooltip="Strikethrough", parent=self)
         self.btn_strike.clicked.connect(self.apply_strikethrough)
         layout.addWidget(self.btn_strike)
 
         layout.addWidget(self._create_separator())
 
-        # Heading (H)
-        self.btn_heading = FormatButton("H", "Heading (##)", self)
+        # Heading
+        self.btn_heading = FormatButton(icon_name="heading", tooltip="Heading (##)", parent=self)
         self.btn_heading.clicked.connect(self.apply_heading)
         layout.addWidget(self.btn_heading)
 
-        # Bullet List (•)
-        self.btn_bullet = FormatButton("• List", "Bullet List (- )", self)
+        # Bullet List
+        self.btn_bullet = FormatButton(text=" List", icon_name="list", tooltip="Bullet List (- )", parent=self)
         self.btn_bullet.clicked.connect(self.apply_bullet_list)
         layout.addWidget(self.btn_bullet)
 
-        # Task Checklist (☑)
-        self.btn_check = FormatButton("☑ Task", "Task Checklist (- [ ])", self)
+        # Task Checklist
+        self.btn_check = FormatButton(text=" Task", icon_name="check_square", tooltip="Task Checklist (- [ ])", parent=self)
         self.btn_check.clicked.connect(self.apply_task_list)
         layout.addWidget(self.btn_check)
 
-        # Code (<>)
-        self.btn_code = FormatButton("< >", "Code Block", self)
+        # Code Block
+        self.btn_code = FormatButton(icon_name="code", tooltip="Code Block (```)", parent=self)
         self.btn_code.clicked.connect(self.apply_code)
         layout.addWidget(self.btn_code)
 
         layout.addWidget(self._create_separator())
 
         # Media: Picture
-        self.btn_picture = FormatButton("🖼 Picture", "Insert Picture / Photo", self)
+        self.btn_picture = FormatButton(text=" Photo", icon_name="image", tooltip="Insert Picture / Photo", parent=self)
         self.btn_picture.clicked.connect(self.add_picture_requested.emit)
         layout.addWidget(self.btn_picture)
 
         # Media: Audio / Voice
-        self.btn_audio = FormatButton("🎙 Audio", "Record Voice Note or Attach Audio", self)
+        self.btn_audio = FormatButton(text=" Audio", icon_name="mic", tooltip="Record Voice Note or Attach Audio", parent=self)
         self.btn_audio.clicked.connect(self.add_audio_requested.emit)
         layout.addWidget(self.btn_audio)
 
         # Media: Video
-        self.btn_video = FormatButton("🎥 Video", "Attach Video File", self)
+        self.btn_video = FormatButton(text=" Video", icon_name="video", tooltip="Attach Video File", parent=self)
         self.btn_video.clicked.connect(self.add_video_requested.emit)
         layout.addWidget(self.btn_video)
 
         layout.addStretch()
 
+    def update_icons_for_theme(self, theme: str):
+        """Updates all button vector icons when theme changes."""
+        for btn in self.findChildren(FormatButton):
+            btn.update_icon_theme(theme)
+
     def _create_separator(self) -> QFrame:
         sep = QFrame(self)
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: rgba(0, 0, 0, 0.12); margin: 3px 2px;")
+        sep.setStyleSheet("color: rgba(128, 128, 128, 0.25); margin: 3px 2px;")
         return sep
 
     # Formatting Actions

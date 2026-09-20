@@ -57,7 +57,8 @@ def run_automated_tests():
     test_files = [
         PROJECT_ROOT / "test_app.py",
         PROJECT_ROOT / "tests" / "test_compatibility_and_media.py",
-        PROJECT_ROOT / "tests" / "test_theme_manager.py"
+        PROJECT_ROOT / "tests" / "test_theme_manager.py",
+        PROJECT_ROOT / "tests" / "test_gui_features.py"
     ]
 
     for test_file in test_files:

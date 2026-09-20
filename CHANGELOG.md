@@ -17,6 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-09-20
+
+### Added
+- **Pure PySide6 SVG Vector Icon Engine (`icons.py`):**
+  - Replaced all platform-dependent unicode emojis with crisp, high-DPI vector SVG icons (Lucide / Fluent design).
+  - Dynamically adapts icon colors across Light, Dark, and Sepia themes.
+  - Applied across Header, Format Toolbar, Note Cards, Search Bar, and In-App Audio Player.
+- **Drag & Drop Media Attachments:**
+  - Users can now drag and drop images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`), audio files (`.wav`, `.m4a`, `.mp3`, `.ogg`, `.flac`), and video clips (`.mp4`, `.webm`, `.mov`, `.mkv`) directly into the note editor.
+  - Automatically copies dropped media to the secure local attachments store and inserts proper markdown links at the drop position.
+- **Live In-Editor Markdown Syntax Highlighter (`markdown_highlighter.py`):**
+  - Instant visual styling in the raw editor pane for `# Headings`, `**Bold**`, `*Italic*`, `~~Strikethrough~~`, `` `Code` ``, and ````Code Blocks````.
+  - Checkboxes (`- [ ]` / `- [x]`) highlighted in real time.
+  - Mutes and dims noisy raw filesystem URLs (`file:///...`), highlighting only clean labels to ensure a clutter-free writing space.
+- **Note Card Hover Micro-Interactions & Quick Action Menu (⋯):**
+  - Smooth card elevation effect on mouse hover.
+  - Top-right 1-click Quick Action menu button (⋯) with vector icons for *Open Note*, *Duplicate*, *Change Color*, *Share / Export*, and *Delete*.
+
+---
+
 ## [1.4.3] - 2026-09-20
 
 ### Fixed

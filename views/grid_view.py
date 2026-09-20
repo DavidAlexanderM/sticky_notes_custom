@@ -11,11 +11,13 @@ try:
     from ..components.note_card import NoteCard
     from ..styles import MARKDOWN_PREVIEW_CSS, NOTE_COLORS
     from ..theme_manager import get_theme_manager
+    from ..icons import get_themed_icon
     from .. import database
 except ImportError:
     from components.note_card import NoteCard
     from styles import MARKDOWN_PREVIEW_CSS, NOTE_COLORS
     from theme_manager import get_theme_manager
+    from icons import get_themed_icon
     import database
 
 
@@ -59,24 +61,23 @@ class StickyNotesGridView(QWidget):
         header_layout.addLayout(title_col)
         header_layout.addStretch()
 
-        # Theme Switcher Button (☀️ / 🌙)
+        # Theme Switcher Button (Sun / Moon)
         self.theme_btn = QPushButton(self)
         self.theme_btn.setObjectName("ThemeToggleBtn")
         self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.theme_btn.setToolTip("Toggle Light / Dark Theme")
         self.theme_btn.clicked.connect(self._toggle_theme)
-        self._update_theme_btn_label()
         header_layout.addWidget(self.theme_btn)
 
         # "Select" Mode Toggle Button
-        self.select_mode_btn = QPushButton("Select", self)
+        self.select_mode_btn = QPushButton(" Select", self)
         self.select_mode_btn.setObjectName("SelectModeButton")
         self.select_mode_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.select_mode_btn.clicked.connect(self._toggle_selection_mode)
         header_layout.addWidget(self.select_mode_btn)
 
         # "+ New Note" Button
-        self.new_note_btn = QPushButton("+ New Note", self)
+        self.new_note_btn = QPushButton(" New Note", self)
         self.new_note_btn.setObjectName("NewNoteButton")
         self.new_note_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.new_note_btn.clicked.connect(self._create_new_note)
@@ -88,10 +89,10 @@ class StickyNotesGridView(QWidget):
         search_filter_layout = QVBoxLayout()
         search_filter_layout.setSpacing(8)
 
-        # Real-time search input
+        # Real-time search input with embedded vector search icon
         self.search_input = QLineEdit(self)
         self.search_input.setObjectName("SearchInput")
-        self.search_input.setPlaceholderText("🔍 Search notes by title, tag, or content...")
+        self.search_input.setPlaceholderText("Search notes by title, tag, or content...")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self._on_search_changed)
         search_filter_layout.addWidget(self.search_input)
@@ -153,13 +154,13 @@ class StickyNotesGridView(QWidget):
 
         action_layout.addStretch()
 
-        self.select_all_btn = QPushButton("Select All", self.action_bar)
+        self.select_all_btn = QPushButton(" Select All", self.action_bar)
         self.select_all_btn.setObjectName("SelectAllButton")
         self.select_all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.select_all_btn.clicked.connect(self._select_all_notes)
         action_layout.addWidget(self.select_all_btn)
 
-        self.delete_selected_btn = QPushButton("🗑 Delete Selected", self.action_bar)
+        self.delete_selected_btn = QPushButton(" Delete Selected", self.action_bar)
         self.delete_selected_btn.setObjectName("DeleteSelectedButton")
         self.delete_selected_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.delete_selected_btn.clicked.connect(self._delete_selected_notes)
@@ -167,15 +168,22 @@ class StickyNotesGridView(QWidget):
 
         self.main_layout.addWidget(self.action_bar)
 
+        self._update_theme_btn_label()
         # Listen to theme change signals
         self.theme_mgr.theme_changed.connect(self._on_theme_changed)
 
     def _update_theme_btn_label(self):
-        """Updates the theme toggle button icon and text."""
-        if self.theme_mgr.is_dark_mode():
-            self.theme_btn.setText("☀️ Light")
-        else:
-            self.theme_btn.setText("🌙 Dark")
+        """Updates icons across the header and action buttons based on current theme."""
+        theme = self.theme_mgr.current_theme
+        is_dark = self.theme_mgr.is_dark_mode()
+        self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=16))
+        self.theme_btn.setText(" Light" if is_dark else " Dark")
+        self.select_mode_btn.setIcon(get_themed_icon("check_square", role="btn_text", theme=theme, size=15))
+        self.new_note_btn.setIcon(get_themed_icon("plus", role="white", theme=theme, size=16))
+
+        # Action bar buttons
+        self.select_all_btn.setIcon(get_themed_icon("check", role="btn_text", theme=theme, size=15))
+        self.delete_selected_btn.setIcon(get_themed_icon("trash", role="white", theme=theme, size=15))
 
     def _toggle_theme(self):
         new_theme = self.theme_mgr.toggle_theme()

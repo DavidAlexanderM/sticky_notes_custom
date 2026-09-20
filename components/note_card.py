@@ -1,27 +1,32 @@
 from datetime import datetime
 import re
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
-    QGraphicsDropShadowEffect
+    QPushButton, QMenu, QGraphicsDropShadowEffect
 )
-from PySide6.QtGui import QColor, QCursor, QMouseEvent
+from PySide6.QtGui import QColor, QCursor, QMouseEvent, QEnterEvent
+
 try:
     from .color_picker_flyout import ColorPickerFlyout
     from ..styles import is_dark_color
+    from ..icons import get_icon
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from styles import is_dark_color
+    from icons import get_icon
+
 
 class NoteCard(QFrame):
     """
-    A sticky note card widget displaying title, markdown excerpt, and timestamp.
+    Modern Sticky Note card widget with hover elevation, 1-click Quick Action menu (⋯),
+    markdown preview excerpt, and dynamic theme contrast.
     """
-    double_clicked = Signal(str)       # Emits note_id
-    color_changed = Signal(str, str)   # Emits (note_id, new_color_hex)
-    delete_requested = Signal(str)    # Emits note_id
-    duplicate_requested = Signal(str) # Emits note_id
-    share_requested = Signal(str)     # Emits note_id
+    double_clicked = Signal(str)          # Emits note_id
+    color_changed = Signal(str, str)      # Emits (note_id, new_color_hex)
+    delete_requested = Signal(str)       # Emits note_id
+    duplicate_requested = Signal(str)    # Emits note_id
+    share_requested = Signal(str)        # Emits note_id
     selection_toggled = Signal(str, bool) # Emits (note_id, is_selected)
 
     def __init__(self, note: dict, parent=None):
@@ -36,22 +41,22 @@ class NoteCard(QFrame):
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setObjectName("NoteCardFrame")
 
-        # Soft shadow
+        # Soft shadow for card elevation
         self.shadow = QGraphicsDropShadowEffect(self)
         self.shadow.setBlurRadius(12)
-        self.shadow.setColor(QColor(0, 0, 0, 30))
+        self.shadow.setColor(QColor(0, 0, 0, 32))
         self.shadow.setOffset(0, 3)
         self.setGraphicsEffect(self.shadow)
 
         # Layout
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(15, 13, 15, 13)
         layout.setSpacing(6)
 
-        # Top row (Title + Checkbox for multi-select)
+        # Top row (Title + Menu button / Selection checkbox)
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(6)
+        top_row.setSpacing(4)
 
         # Note Title
         self.title_label = QLabel(self.note.get("title") or "Untitled", self)
@@ -60,7 +65,16 @@ class NoteCard(QFrame):
         self.title_label.setMaximumHeight(44)
         top_row.addWidget(self.title_label, 1)
 
-        # Checkbox indicator for selection mode
+        # Quick Action Button (⋯)
+        self.menu_btn = QPushButton(self)
+        self.menu_btn.setObjectName("CardMenuBtn")
+        self.menu_btn.setFixedSize(26, 24)
+        self.menu_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.menu_btn.setToolTip("Note Options")
+        self.menu_btn.clicked.connect(self._on_menu_btn_clicked)
+        top_row.addWidget(self.menu_btn)
+
+        # Checkbox indicator for multi-selection mode
         self.check_indicator = QLabel("⚪", self)
         self.check_indicator.setObjectName("CheckIndicator")
         self.check_indicator.setVisible(False)
@@ -84,7 +98,7 @@ class NoteCard(QFrame):
         self.badge_label.setVisible(bool(badges))
         layout.addWidget(self.badge_label)
 
-        # Bottom row (timestamp + right click hint)
+        # Bottom row (timestamp + palette hint)
         bottom_row = QHBoxLayout()
         bottom_row.setContentsMargins(0, 0, 0, 0)
 
@@ -95,18 +109,36 @@ class NoteCard(QFrame):
 
         bottom_row.addStretch()
         
-        hint_label = QLabel("🎨", self)
-        hint_label.setToolTip("Right-click for colors")
-        hint_label.setStyleSheet("opacity: 0.6; font-size: 11px;")
-        bottom_row.addWidget(hint_label)
+        self.palette_icon_btn = QPushButton(self)
+        self.palette_icon_btn.setObjectName("CardPaletteBtn")
+        self.palette_icon_btn.setFixedSize(22, 20)
+        self.palette_icon_btn.setToolTip("Change Note Color")
+        self.palette_icon_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.palette_icon_btn.clicked.connect(lambda: self._show_color_flyout(self.mapToGlobal(QPoint(20, 160))))
+        bottom_row.addWidget(self.palette_icon_btn)
 
         layout.addLayout(bottom_row)
 
         self._apply_style()
 
+    def enterEvent(self, event: QEnterEvent):
+        """Elevate shadow smoothly on hover."""
+        self.shadow.setBlurRadius(20)
+        self.shadow.setOffset(0, 6)
+        self.shadow.setColor(QColor(0, 0, 0, 48))
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Restore default elevation."""
+        self.shadow.setBlurRadius(12)
+        self.shadow.setOffset(0, 3)
+        self.shadow.setColor(QColor(0, 0, 0, 32))
+        super().leaveEvent(event)
+
     def set_selection_mode(self, enabled: bool):
         self.selection_mode = enabled
         self.check_indicator.setVisible(enabled)
+        self.menu_btn.setVisible(not enabled)
         if not enabled:
             self.is_selected = False
             self.check_indicator.setText("⚪")
@@ -130,20 +162,25 @@ class NoteCard(QFrame):
         if dark_card:
             text_color = "#FFFFFF"
             subtext_color = "#F1F5F9"
-            date_color = "#E2E8F0"
-            badge_bg = "rgba(255, 255, 255, 0.15)"
+            date_color = "#CBD5E1"
+            badge_bg = "rgba(255, 255, 255, 0.18)"
             border_color = "rgba(255, 255, 255, 0.25)"
+            menu_hover = "rgba(255, 255, 255, 0.20)"
         else:
             text_color = "#0F172A"
             subtext_color = "#1E293B"
-            date_color = "#334155"
-            badge_bg = "rgba(0, 0, 0, 0.07)"
-            border_color = "rgba(0, 0, 0, 0.15)"
+            date_color = "#475569"
+            badge_bg = "rgba(0, 0, 0, 0.08)"
+            border_color = "rgba(0, 0, 0, 0.14)"
+            menu_hover = "rgba(0, 0, 0, 0.08)"
         
         if self.is_selected:
             border_style = "2.5px solid #2563EB"
         else:
             border_style = f"1.5px solid {border_color}"
+
+        self.menu_btn.setIcon(get_icon("more_horizontal", color=text_color, size=16))
+        self.palette_icon_btn.setIcon(get_icon("palette", color=date_color, size=14))
 
         self.setStyleSheet(f"""
             QFrame#NoteCardFrame {{
@@ -171,8 +208,8 @@ class NoteCard(QFrame):
                 font-weight: 600;
                 color: {text_color};
                 background-color: {badge_bg};
-                border-radius: 4px;
-                padding: 2px 6px;
+                border-radius: 6px;
+                padding: 3px 8px;
             }}
             QLabel#CardDate {{
                 color: {date_color};
@@ -180,19 +217,28 @@ class NoteCard(QFrame):
                 font-weight: 600;
                 background: transparent;
             }}
+            QPushButton#CardMenuBtn, QPushButton#CardPaletteBtn {{
+                background-color: transparent;
+                border: none;
+                border-radius: 5px;
+                padding: 2px;
+            }}
+            QPushButton#CardMenuBtn:hover, QPushButton#CardPaletteBtn:hover {{
+                background-color: {menu_hover};
+            }}
         """)
 
     def _get_media_badges(self, content: str) -> str:
-        """Returns visual indicator emojis for attached media types."""
+        """Returns visual indicators for attached media types."""
         if not content:
             return ""
         badges = []
         if "![" in content or any(ext in content.lower() for ext in (".png)", ".jpg)", ".jpeg)", ".gif)", ".webp)")):
-            badges.append("📷 Photo")
+            badges.append("Photo")
         if "Voice Note" in content or any(ext in content.lower() for ext in (".m4a)", ".mp3)", ".wav)")):
-            badges.append("🎵 Audio")
+            badges.append("Audio")
         if "Watch Video" in content or any(ext in content.lower() for ext in (".mp4)", ".webm)", ".mkv)")):
-            badges.append("🎥 Video")
+            badges.append("Video")
         return "  •  ".join(badges)
 
     def _clean_excerpt(self, markdown_text: str) -> str:
@@ -248,6 +294,52 @@ class NoteCard(QFrame):
             self._show_color_flyout(event.globalPosition().toPoint())
         super().mousePressEvent(event)
 
+    def _on_menu_btn_clicked(self):
+        """Opens quick action context menu right beneath the ⋯ button."""
+        pos = self.menu_btn.mapToGlobal(QPoint(0, self.menu_btn.height()))
+        self._show_card_menu(pos)
+
+    def _show_card_menu(self, global_pos: QPoint):
+        """Displays modern Quick Action Menu with vector icons."""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #FFFFFF;
+                border: 1px solid rgba(0, 0, 0, 0.15);
+                border-radius: 8px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 18px 6px 10px;
+                font-size: 13px;
+                border-radius: 4px;
+                color: #0F172A;
+            }
+            QMenu::item:selected {
+                background-color: #F1F5F9;
+                color: #2563EB;
+            }
+        """)
+
+        act_edit = menu.addAction(get_icon("edit", color="#0F172A", size=16), "Open Note")
+        act_dup = menu.addAction(get_icon("copy", color="#0F172A", size=16), "Duplicate")
+        act_color = menu.addAction(get_icon("palette", color="#0F172A", size=16), "Change Color")
+        act_share = menu.addAction(get_icon("share", color="#0F172A", size=16), "Share / Export")
+        menu.addSeparator()
+        act_delete = menu.addAction(get_icon("trash", color="#DC2626", size=16), "Delete Note")
+
+        action = menu.exec(global_pos)
+        if action == act_edit:
+            self.double_clicked.emit(self.note_id)
+        elif action == act_dup:
+            self.duplicate_requested.emit(self.note_id)
+        elif action == act_color:
+            self._show_color_flyout(global_pos)
+        elif action == act_share:
+            self.share_requested.emit(self.note_id)
+        elif action == act_delete:
+            self.delete_requested.emit(self.note_id)
+
     def _show_color_flyout(self, global_pos):
         flyout = ColorPickerFlyout(self)
         flyout.color_selected.connect(self._on_flyout_color_selected)
@@ -260,4 +352,3 @@ class NoteCard(QFrame):
     def _on_flyout_color_selected(self, hex_val: str):
         self.update_color(hex_val)
         self.color_changed.emit(self.note_id, hex_val)
-
