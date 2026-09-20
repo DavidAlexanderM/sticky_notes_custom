@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.1] - 2026-09-20
+
+### Fixed
+- **Startup Crash in `NoteEditorView` Initialization:**
+  - Resolved `AttributeError: 'NoteEditorView' object has no attribute 'play_pause_btn'` caused by premature invocation of `_update_header_icons()` before the in-app audio player frame was instantiated.
+  - Added defensive `hasattr()` checks across all header and audio player button icon updates.
+  - Added comprehensive end-to-end instantiation and theme toggle regression tests in `tests/test_gui_features.py` for both `NoteEditorView` and `MainWindow`.
+
+---
+
 ## [1.5.0] - 2026-09-20
 
 ### Added

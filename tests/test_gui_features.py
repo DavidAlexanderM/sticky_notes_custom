@@ -19,8 +19,9 @@ if app is None:
 
 import icons
 from markdown_highlighter import MarkdownHighlighter
-from views.editor_view import MarkdownTextEdit
+from views.editor_view import MarkdownTextEdit, NoteEditorView
 from components.note_card import NoteCard
+from main import MainWindow
 
 
 class TestGUIFeatures(unittest.TestCase):
@@ -142,6 +143,26 @@ def test():
         card.set_selection_mode(False)
         self.assertFalse(card.menu_btn.isHidden())
         self.assertTrue(card.check_indicator.isHidden())
+
+    def test_note_editor_view_instantiation_and_theme_toggle(self):
+        """Verify NoteEditorView initializes without missing attribute errors and handles theme switches."""
+        editor_view = NoteEditorView()
+        self.assertIsNotNone(editor_view.play_pause_btn)
+        self.assertIsNotNone(editor_view.theme_btn)
+        self.assertIsNotNone(editor_view.highlighter)
+
+        # Trigger dynamic theme switch
+        editor_view._toggle_theme()
+        self.assertIsNotNone(editor_view.play_pause_btn.icon())
+        self.assertFalse(editor_view.play_pause_btn.icon().isNull())
+        editor_view.theme_mgr.set_theme("light")
+
+    def test_main_window_instantiation(self):
+        """Verify the full MainWindow instantiates completely without startup exceptions."""
+        win = MainWindow()
+        self.assertIsNotNone(win.grid_view)
+        self.assertIsNotNone(win.editor_view)
+        self.assertEqual(win.stacked_widget.currentIndex(), 0)
 
 
 if __name__ == "__main__":

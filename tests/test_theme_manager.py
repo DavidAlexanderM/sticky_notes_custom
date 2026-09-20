@@ -21,6 +21,7 @@ class TestThemeManager(unittest.TestCase):
 
     def setUp(self):
         self.mgr = ThemeManager()
+        self.mgr.set_theme("light")
 
     def test_supported_themes(self):
         """Verify supported themes are light, dark, sepia."""

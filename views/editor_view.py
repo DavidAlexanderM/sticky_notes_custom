@@ -194,9 +194,6 @@ class NoteEditorView(QWidget):
         self.theme_btn.clicked.connect(self._toggle_theme)
         header_layout.addWidget(self.theme_btn)
 
-        self._update_header_icons()
-        self.theme_mgr.theme_changed.connect(self._on_theme_changed)
-
         main_layout.addLayout(header_layout)
 
         # Editor & Preview Splitter Area
@@ -293,6 +290,9 @@ class NoteEditorView(QWidget):
         self.media_player.durationChanged.connect(self._on_player_duration_changed)
         self.media_player.playbackStateChanged.connect(self._on_player_state_changed)
         self._current_audio_url = None
+
+        self._update_header_icons()
+        self.theme_mgr.theme_changed.connect(self._on_theme_changed)
 
         # Default Mode is Split View
         self.set_view_mode("split")
@@ -407,17 +407,24 @@ class NoteEditorView(QWidget):
     def _update_header_icons(self):
         """Updates all header and player button vector icons dynamically based on current theme."""
         theme = self.theme_mgr.current_theme
-        self.back_btn.setIcon(get_themed_icon("arrow_left", role="btn_text", theme=theme, size=18))
-        self.dup_btn.setIcon(get_themed_icon("copy", role="btn_text", theme=theme, size=18))
-        self.share_btn.setIcon(get_themed_icon("share", role="btn_text", theme=theme, size=18))
-        is_dark = self.theme_mgr.is_dark_mode()
-        self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=18))
+        if hasattr(self, 'back_btn'):
+            self.back_btn.setIcon(get_themed_icon("arrow_left", role="btn_text", theme=theme, size=18))
+        if hasattr(self, 'dup_btn'):
+            self.dup_btn.setIcon(get_themed_icon("copy", role="btn_text", theme=theme, size=18))
+        if hasattr(self, 'share_btn'):
+            self.share_btn.setIcon(get_themed_icon("share", role="btn_text", theme=theme, size=18))
+        if hasattr(self, 'theme_btn'):
+            is_dark = self.theme_mgr.is_dark_mode()
+            self.theme_btn.setIcon(get_themed_icon("sun" if is_dark else "moon", role="btn_text", theme=theme, size=18))
 
         # Audio player buttons
-        is_playing = hasattr(self, 'media_player') and self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
-        self.play_pause_btn.setIcon(get_themed_icon("pause" if is_playing else "play", role="btn_text", theme=theme, size=16))
-        self.external_play_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
-        self.close_player_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=16))
+        if hasattr(self, 'play_pause_btn'):
+            is_playing = hasattr(self, 'media_player') and self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+            self.play_pause_btn.setIcon(get_themed_icon("pause" if is_playing else "play", role="btn_text", theme=theme, size=16))
+        if hasattr(self, 'external_play_btn'):
+            self.external_play_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
+        if hasattr(self, 'close_player_btn'):
+            self.close_player_btn.setIcon(get_themed_icon("close", role="btn_text", theme=theme, size=16))
 
     def _toggle_theme(self):
         self.theme_mgr.toggle_theme()
