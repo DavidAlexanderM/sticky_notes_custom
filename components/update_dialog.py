@@ -4,14 +4,15 @@ Features live GitHub API querying, private repository token authentication,
 markdown changelog preview, chunked download progress, and Windows self-restart.
 """
 
+import sys
 from pathlib import Path
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QWidget, QFrame, QProgressBar,
     QScrollArea, QLineEdit, QMessageBox, QTextBrowser
 )
-from PySide6.QtGui import QDesktopServices, QCursor, QFont
+from PySide6.QtGui import QDesktopServices, QCursor, QFont, QCloseEvent
 
 try:
     from ..version import __version__, HOMEPAGE
@@ -53,6 +54,8 @@ class UpdateDialog(QDialog):
         self.download_worker = None
         self.release_info = None
         self.downloaded_zip_path = None
+        self.restart_timer = None
+        self.auto_restart_seconds = 3
 
         self._build_ui()
 
@@ -317,17 +320,35 @@ class UpdateDialog(QDialog):
         msg.setWordWrap(True)
         self.card_layout.addWidget(msg)
 
+        if is_frozen:
+            self.auto_restart_seconds = 3
+            self.countdown_lbl = QLabel(f"Restarting to apply update in {self.auto_restart_seconds} seconds...", self.card)
+            self.countdown_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.countdown_lbl.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {self.pal['accent']}; margin-top: 4px;")
+            self.card_layout.addWidget(self.countdown_lbl)
+
+            if not self.restart_timer:
+                self.restart_timer = QTimer(self)
+                self.restart_timer.timeout.connect(self._on_restart_timer_tick)
+            self.restart_timer.start(1000)
+
         self.card_layout.addStretch()
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
 
         if is_frozen:
-            restart_btn = QPushButton("🚀 Restart & Apply Update Now", self.card)
+            restart_btn = QPushButton("🚀 Restart Now", self.card)
             restart_btn.setObjectName("NewNoteButton")
             restart_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             restart_btn.clicked.connect(self._apply_update)
             btn_row.addWidget(restart_btn)
+
+            cancel_auto_btn = QPushButton("Cancel Auto-Restart", self.card)
+            cancel_auto_btn.setObjectName("SelectModeButton")
+            cancel_auto_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            cancel_auto_btn.clicked.connect(self._cancel_auto_restart)
+            btn_row.addWidget(cancel_auto_btn)
         elif is_exe:
             run_installer_btn = QPushButton("🚀 Run Installer Now", self.card)
             run_installer_btn.setObjectName("NewNoteButton")
@@ -349,6 +370,22 @@ class UpdateDialog(QDialog):
 
         btn_row.addStretch()
         self.card_layout.addLayout(btn_row)
+
+    def _on_restart_timer_tick(self):
+        self.auto_restart_seconds -= 1
+        if self.auto_restart_seconds > 0:
+            if hasattr(self, 'countdown_lbl'):
+                self.countdown_lbl.setText(f"Restarting to apply update in {self.auto_restart_seconds} seconds...")
+        else:
+            if self.restart_timer:
+                self.restart_timer.stop()
+            self._apply_update()
+
+    def _cancel_auto_restart(self):
+        if self.restart_timer:
+            self.restart_timer.stop()
+        if hasattr(self, 'countdown_lbl'):
+            self.countdown_lbl.setText("Auto-restart cancelled. Click 'Restart Now' when you are ready.")
 
     def _show_error_or_auth(self, error_msg: str, is_auth: bool):
         self._clear_card()
@@ -586,6 +623,8 @@ class UpdateDialog(QDialog):
             self._show_up_to_date()
 
     def _apply_update(self):
+        if self.restart_timer:
+            self.restart_timer.stop()
         if not self.downloaded_zip_path:
             return
         file_path = Path(self.downloaded_zip_path)
@@ -609,3 +648,14 @@ class UpdateDialog(QDialog):
                 f"Update package successfully downloaded to:\n{file_path}\n\nIn development mode, please run git pull or extract the ZIP."
             )
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent)))
+
+    def closeEvent(self, event):
+        if self.restart_timer:
+            self.restart_timer.stop()
+        super().closeEvent(event)
+
+    def reject(self):
+        if self.restart_timer:
+            self.restart_timer.stop()
+        super().reject()
+

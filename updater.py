@@ -362,33 +362,41 @@ def apply_update_and_restart(file_path_str: str) -> bool:
 
     # Case 1: Installer executable (.exe)
     if file_path.suffix.lower() == ".exe":
-        installed_exe = Path(os.environ.get('LOCALAPPDATA', '')) / "Programs" / "StickyNotes" / "StickyNotes.exe"
-        target_exe = Path(sys.executable).resolve() if is_frozen else installed_exe
+        installed_dir = Path(os.environ.get('LOCALAPPDATA', '')) / "Programs" / "StickyNotes"
+        installed_exe = installed_dir / "StickyNotes.exe"
+        app_dir = Path(sys.executable).resolve().parent if is_frozen else installed_dir
+        target_exe = app_dir / "StickyNotes.exe"
 
         batch_script = f"""@echo off
 setlocal enabledelayedexpansion
-echo [Sticky Notes Updater] Waiting for application (PID {current_pid}) to close...
+echo [Sticky Notes Updater] Closing application (PID {current_pid})...
 
+:: 1. Force close the existing application process to ensure zero file locks
+taskkill /f /pid {current_pid} >nul 2>&1
 :WAIT_LOOP
 tasklist /fi "pid eq {current_pid}" | find "{current_pid}" >nul
 if not errorlevel 1 (
     ping 127.0.0.1 -n 2 >nul
+    taskkill /f /pid {current_pid} >nul 2>&1
     goto WAIT_LOOP
 )
 
+:: 2. Run installer and WAIT for it to completely finish
 echo [Sticky Notes Updater] Running installer...
-"{file_path}" /SILENT /CLOSEAPPLICATIONS
+start /wait "" "{file_path}" /SILENT /CLOSEAPPLICATIONS /DIR="{app_dir}"
 
+:: 3. Launch the updated application (check app_dir first, then installed_exe)
 echo [Sticky Notes Updater] Launching updated application...
-ping 127.0.0.1 -n 3 >nul
+ping 127.0.0.1 -n 2 >nul
 if exist "{target_exe}" (
     start "" "{target_exe}"
 ) else if exist "{installed_exe}" (
     start "" "{installed_exe}"
 )
 
+:: 4. Clean up staging files
 echo [Sticky Notes Updater] Cleaning up staging files...
-ping 127.0.0.1 -n 3 >nul
+ping 127.0.0.1 -n 2 >nul
 del "{file_path}" >nul 2>&1
 (goto) 2>nul & del "%~f0"
 """
@@ -435,22 +443,28 @@ del "{file_path}" >nul 2>&1
 
     batch_script = f"""@echo off
 setlocal enabledelayedexpansion
-echo [Sticky Notes Updater] Waiting for application (PID {current_pid}) to close...
+echo [Sticky Notes Updater] Closing application (PID {current_pid})...
 
+:: 1. Force close the existing application process
+taskkill /f /pid {current_pid} >nul 2>&1
 :WAIT_LOOP
 tasklist /fi "pid eq {current_pid}" | find "{current_pid}" >nul
 if not errorlevel 1 (
     ping 127.0.0.1 -n 2 >nul
+    taskkill /f /pid {current_pid} >nul 2>&1
     goto WAIT_LOOP
 )
 
+:: 2. Apply update files via robocopy
 echo [Sticky Notes Updater] Applying update files...
 robocopy "{payload_dir}" "{app_target_dir}" /E /NP /R:3 /W:1 >nul
 
+:: 3. Relaunch updated application
 echo [Sticky Notes Updater] Relaunching application...
 ping 127.0.0.1 -n 2 >nul
 start "" "{exe_path}"
 
+:: 4. Clean up staging files
 echo [Sticky Notes Updater] Cleaning up staging files...
 ping 127.0.0.1 -n 3 >nul
 rd /s /q "{temp_extract_dir}" >nul 2>&1

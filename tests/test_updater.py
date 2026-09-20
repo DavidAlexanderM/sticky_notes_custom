@@ -142,6 +142,13 @@ class TestUpdater(unittest.TestCase):
         self.assertIsNotNone(dialog.mirror_input)
         self.assertIsNotNone(dialog.token_input)
 
+        # Verify install ready rendering & timer lifecycle
+        dialog._show_install_ready("C:/fake/path/StickyNotes_Setup_v1.6.3.exe")
+        self.assertEqual(dialog.downloaded_zip_path, "C:/fake/path/StickyNotes_Setup_v1.6.3.exe")
+        dialog._cancel_auto_restart()
+        if dialog.restart_timer:
+            self.assertFalse(dialog.restart_timer.isActive())
+
         dialog.close()
 
 
