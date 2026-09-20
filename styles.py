@@ -246,6 +246,17 @@ QFrame#AudioPlayerFrame QPushButton:hover {{
     border-color: {pal["accent"]};
 }}
 
+QFrame#AudioPlayerFrame QLabel {{
+    color: {pal["text_primary"]};
+    background: transparent;
+}}
+
+QFrame#AudioPlayerFrame QLabel#AudioTimeLabel {{
+    color: {pal["text_secondary"]};
+    font-size: 11px;
+    font-weight: 600;
+}}
+
 QPushButton#BackButton {{
     background-color: {pal["btn_bg"]};
     color: {pal["btn_text"]};

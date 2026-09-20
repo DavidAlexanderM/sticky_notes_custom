@@ -162,6 +162,7 @@ class NoteEditorView(QWidget):
         self.preview = QTextBrowser(self.splitter)
         self.preview.setObjectName("MarkdownPreview")
         self.preview.setOpenExternalLinks(False)
+        self.preview.setOpenLinks(False)
         self.preview.anchorClicked.connect(self._on_anchor_clicked)
 
         self.splitter.addWidget(self.editor)
@@ -200,7 +201,7 @@ class NoteEditorView(QWidget):
         player_layout.addWidget(self.audio_slider, 1)
 
         self.audio_time_label = QLabel("00:00 / 00:00", self.audio_player_frame)
-        self.audio_time_label.setStyleSheet("font-size: 11px; opacity: 0.85;")
+        self.audio_time_label.setObjectName("AudioTimeLabel")
         player_layout.addWidget(self.audio_time_label)
 
         self.external_play_btn = QPushButton("↗", self.audio_player_frame)
@@ -285,12 +286,7 @@ class NoteEditorView(QWidget):
     def _render_markdown(self):
         raw_text = self.editor.toPlainText()
 
-        # 1. Transform markdown tasks into clean Unicode checkboxes for QTextBrowser
-        # Replace '- [ ] ' with '- ☐ ' and '- [x] ' / '- [X] ' with '- ☑ '
-        processed_text = re.sub(r'^(\s*[-*+]\s*)\[ \]\s*', r'\1☐ ', raw_text, flags=re.MULTILINE)
-        processed_text = re.sub(r'^(\s*[-*+]\s*)\[[xX]\]\s*', r'\1☑ ', processed_text, flags=re.MULTILINE)
-
-        # 2. Transform Voice/Audio and Video links into safe escaped markdown links
+        # Transform Voice/Audio and Video links into safe escaped markdown links
         # This prevents filenames like voice_note_abc.wav from turning into italics!
         def _safe_media_link(match):
             icon = match.group(1)
@@ -302,14 +298,42 @@ class NoteEditorView(QWidget):
         processed_text = re.sub(
             r'([🎵🎥])\s*\[(Play Voice Note:|Watch Video:)\s*([^\]]+)\]\(([^)]+)\)',
             _safe_media_link,
-            processed_text
+            raw_text
         )
 
-        # Convert markdown to html using markdown2 with fenced-code-blocks, tables, and strike
+        # Convert markdown to html using markdown2 with native task_list support
         html_body = markdown2.markdown(
             processed_text, 
-            extras=["fenced-code-blocks", "tables", "strike"]
+            extras=["fenced-code-blocks", "tables", "task_list", "strike"]
         )
+
+        # Post-process task checkboxes to render crisp Unicode ballot boxes without redundant bullet points
+        def _replace_task_li(match):
+            is_checked = 'checked' in match.group(1)
+            text = match.group(2).strip()
+            if text.startswith('<p>') and text.endswith('</p>'):
+                text = text[3:-4].strip()
+            check_char = "☑" if is_checked else "☐"
+            check_color = "#38BDF8" if is_checked else "#94A3B8"
+            return (
+                f'<div style="margin: 3px 0 3px 6px; line-height: 1.5;">'
+                f'<span style="font-size: 15px; color: {check_color}; font-weight: bold;">{check_char}</span> '
+                f'<span>{text}</span></div>'
+            )
+
+        html_body = re.sub(
+            r'<li>\s*(?:<p>)?<input type="checkbox"[^>]*class="task-list-item-checkbox"([^>]*)>\s*(.*?)(?:</p>)?\s*</li>',
+            _replace_task_li,
+            html_body,
+            flags=re.DOTALL
+        )
+        html_body = re.sub(
+            r'<ul>\s*((?:<div style="margin: 3px 0 3px 6px; line-height: 1.5;">.*?</div>\s*)+)</ul>',
+            r'\1',
+            html_body,
+            flags=re.DOTALL
+        )
+
         safe_html_body = sanitize_markdown_html(html_body)
         css = self.theme_mgr.get_markdown_css()
         full_html = f"<!DOCTYPE html><html><head><meta charset=\"utf-8\">{css}</head><body>{safe_html_body}</body></html>"
@@ -478,6 +502,10 @@ class NoteEditorView(QWidget):
     def _on_anchor_clicked(self, url: QUrl):
         """Open audio/video media files or links with security validation and in-app playback."""
         url_str = url.toString()
+        if url_str.startswith("#"):
+            self.preview.scrollToAnchor(url_str.lstrip("#"))
+            return
+
         is_safe, reason = is_safe_url(url_str, allowed_attachments_dir=get_attachments_dir())
         if not is_safe:
             QMessageBox.warning(

@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.3] - 2026-09-20
+
+### Fixed
+- **QTextBrowser Media Link Garbled Binary Text Bug:**
+  - Resolved the critical bug where clicking an attached media link (`voice_note_xxxx.m4a`) in the Markdown preview panel caused raw MP4 binary container bytes (`ftypisom isomiso2mp41 free mdat moov...`) to render into the preview document.
+  - Set `setOpenLinks(False)` on the `QTextBrowser` preview component, completely disabling built-in internal document navigation on link activation and ensuring all link clicks are cleanly intercepted and delegated exclusively to the safe security validator and in-app media player.
+  - Added in-document anchor jump support (`#section-name`) using `scrollToAnchor`.
+- **Markdown Task List Bullet Formatting:**
+  - Replaced manual markdown string task preprocessing with native `task_list` parsing and elegant post-processing.
+  - Eliminated duplicate list bullet disc markers (`• ☐`) when rendering task items, displaying clean, standalone Unicode ballot boxes (`☐` / `☑`) with customized accent coloring.
+- **High-Contrast Theme Legibility & Audio Player Labels:**
+  - Added explicit theme color rules (`text_primary` and `text_secondary`) for `QFrame#AudioPlayerFrame QLabel` components to prevent unreadable gray text on dark themes.
+
+---
+
 ## [1.4.2] - 2026-09-19
 
 ### Fixed
