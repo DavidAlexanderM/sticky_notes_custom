@@ -20,13 +20,13 @@ try:
     from ..components.help_dialog import HelpAboutDialog
     from ..components.share_dialog import ShareNoteDialog
     from ..media_manager import copy_to_attachments, get_attachments_dir
-    from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
+    from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css, THEME_PALETTES
     from ..security import is_safe_url, sanitize_markdown_html
     from ..theme_manager import get_theme_manager
     from ..icons import get_themed_icon
     from ..markdown_highlighter import MarkdownHighlighter
     from ..components.tag_selector_flyout import TagSelectorFlyout
-    from ..i18n import tr
+    from ..i18n import tr, get_translation_manager
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
@@ -36,9 +36,9 @@ except ImportError:
     from components.help_dialog import HelpAboutDialog
     from components.share_dialog import ShareNoteDialog
     from components.tag_selector_flyout import TagSelectorFlyout
-    from i18n import tr
+    from i18n import tr, get_translation_manager
     from media_manager import copy_to_attachments, get_attachments_dir
-    from styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
+    from styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css, THEME_PALETTES
     from security import is_safe_url, sanitize_markdown_html
     from theme_manager import get_theme_manager
     from icons import get_themed_icon
@@ -238,6 +238,14 @@ class NoteEditorView(QWidget):
 
         main_layout.addLayout(header_layout)
 
+        # Dedicated Tags Bar beneath header
+        self.tags_bar_widget = QWidget(self)
+        self.tags_bar_widget.setObjectName("EditorTagsBar")
+        self.tags_bar_layout = QHBoxLayout(self.tags_bar_widget)
+        self.tags_bar_layout.setContentsMargins(4, 0, 4, 2)
+        self.tags_bar_layout.setSpacing(6)
+        main_layout.addWidget(self.tags_bar_widget)
+
         # Editor & Preview Splitter Area
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.splitter.setHandleWidth(6)
@@ -338,6 +346,10 @@ class NoteEditorView(QWidget):
         self._update_header_icons()
         self.theme_mgr.theme_changed.connect(self._on_theme_changed)
 
+        self.i18n = get_translation_manager()
+        self.i18n.language_changed.connect(self._apply_language_change)
+        self._apply_language_change()
+
         # Default Mode is Split View
         self.set_view_mode("split")
 
@@ -358,6 +370,7 @@ class NoteEditorView(QWidget):
         self.current_project_id = note.get("project_id", "default")
         self._update_color_badge()
         self._update_editor_project_btn()
+        self._refresh_tags_bar()
 
         self.title_input.blockSignals(False)
         self.editor.blockSignals(False)
@@ -654,6 +667,126 @@ class NoteEditorView(QWidget):
         pos = self.tags_btn.mapToGlobal(self.tags_btn.rect().bottomLeft())
         flyout.move(pos.x() - 100, pos.y() + 6)
         flyout.exec()
+        self._refresh_tags_bar()
+
+    def _refresh_tags_bar(self):
+        """Renders interactive tag chips with (×) quick remove and [+ Add Tag] button."""
+        if not hasattr(self, 'tags_bar_layout') or self.tags_bar_layout is None:
+            return
+        while self.tags_bar_layout.count():
+            item = self.tags_bar_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        if not self.current_note_id:
+            return
+
+        tags = database.get_note_tags(self.current_note_id)
+
+        theme = self.theme_mgr.current_theme
+        is_dark = self.theme_mgr.is_dark_mode()
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+        chip_bg = pal.get("btn_hover", "#333537" if is_dark else "#E2E8F0")
+        chip_fg = pal.get("text_primary", "#E3E3E3" if is_dark else "#1E293B")
+        border = pal.get("border", "#444746" if is_dark else "#CBD5E1")
+
+        for tag in tags:
+            chip = QFrame(self.tags_bar_widget)
+            chip.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {chip_bg};
+                    border: 1px solid {border};
+                    border-radius: 11px;
+                }}
+            """)
+            c_lay = QHBoxLayout(chip)
+            c_lay.setContentsMargins(7, 2, 6, 2)
+            c_lay.setSpacing(5)
+
+            lbl = QLabel(f"#{tag}", chip)
+            lbl.setStyleSheet(f"color: {chip_fg}; font-size: 11px; font-weight: 600; border: none; background: transparent;")
+            c_lay.addWidget(lbl)
+
+            btn_del = QPushButton("×", chip)
+            btn_del.setFixedSize(14, 14)
+            btn_del.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn_del.setToolTip(f"Remove #{tag}")
+            btn_del.setStyleSheet("""
+                QPushButton {
+                    border: none;
+                    background: transparent;
+                    color: #94A3B8;
+                    font-size: 13px;
+                    font-weight: bold;
+                    padding: 0;
+                    margin: 0;
+                }
+                QPushButton:hover {
+                    color: #EF4444;
+                }
+            """)
+            btn_del.clicked.connect(lambda _, t=tag: self._remove_tag_from_current_note(t))
+            c_lay.addWidget(btn_del)
+
+            self.tags_bar_layout.addWidget(chip)
+
+        # "+ Add Tag" button
+        add_tag_btn = QPushButton(f"+ {tr('add_tag')}", self.tags_bar_widget)
+        add_tag_btn.setObjectName("AddTagBtn")
+        add_tag_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        add_tag_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px dashed {border};
+                border-radius: 11px;
+                padding: 2px 9px;
+                font-size: 11px;
+                font-weight: 600;
+                color: {pal.get('accent', '#2563EB')};
+            }}
+            QPushButton:hover {{
+                background-color: {chip_bg};
+            }}
+        """)
+        add_tag_btn.clicked.connect(self._open_tags_flyout)
+        self.tags_bar_layout.addWidget(add_tag_btn)
+
+        self.tags_bar_layout.addStretch()
+
+    def _remove_tag_from_current_note(self, tag_to_remove: str):
+        if not self.current_note_id:
+            return
+        current_tags = database.get_note_tags(self.current_note_id)
+        new_tags = [t for t in current_tags if t != tag_to_remove]
+        database.set_note_tags(self.current_note_id, new_tags)
+        self._refresh_tags_bar()
+
+    def _apply_language_change(self):
+        """Updates all button tooltips and text in the editor when the language switches."""
+        if hasattr(self, 'back_btn'):
+            self.back_btn.setToolTip(f"{tr('back_to_board')} (Esc)")
+        if hasattr(self, 'title_input'):
+            self.title_input.setPlaceholderText(tr("editor_title_placeholder"))
+        if hasattr(self, 'btn_edit'):
+            self.btn_edit.setText(tr("mode_edit"))
+        if hasattr(self, 'btn_split'):
+            self.btn_split.setText(tr("mode_split"))
+        if hasattr(self, 'btn_preview'):
+            self.btn_preview.setText(tr("mode_preview"))
+        if hasattr(self, 'dup_btn'):
+            self.dup_btn.setToolTip(tr("duplicate_note"))
+        if hasattr(self, 'share_btn'):
+            self.share_btn.setToolTip(tr("share_export"))
+        if hasattr(self, 'help_btn'):
+            self.help_btn.setToolTip(tr("help_tooltip"))
+        if hasattr(self, 'tags_btn'):
+            self.tags_btn.setToolTip(tr("tooltip_tags"))
+        if hasattr(self, 'color_badge'):
+            self.color_badge.setToolTip(tr("tooltip_palette"))
+        if hasattr(self, 'format_toolbar') and hasattr(self.format_toolbar, 'retranslate_ui'):
+            self.format_toolbar.retranslate_ui()
+        self._refresh_tags_bar()
 
     def _on_color_selected(self, hex_val: str):
         self.current_color_hex = hex_val

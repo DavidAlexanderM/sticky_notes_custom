@@ -16,6 +16,7 @@ import i18n
 from theme_manager import get_theme_manager
 from main import MainWindow
 from components.tag_selector_flyout import TagSelectorFlyout
+from components.help_dialog import HelpAboutDialog
 
 def main():
     app = QApplication.instance()
@@ -25,13 +26,11 @@ def main():
     theme_mgr = get_theme_manager()
     app.setStyleSheet(theme_mgr.get_app_stylesheet())
 
-    # Ensure custom tags exist for Danielle
     database.init_db()
     database.create_custom_tag("Danielle's Projects", "#8B5CF6")
     database.create_custom_tag("University Research", "#EC4899")
     database.create_custom_tag("Client Follow-up", "#10B981")
 
-    # Assign tags to visible free notes
     notes = database.get_all_notes("all")
     free_notes = [n for n in notes if n.get("project_id", "default") == "default"]
     if len(free_notes) >= 1:
@@ -43,49 +42,61 @@ def main():
     if len(free_notes) >= 4:
         database.set_note_tags(free_notes[3]["id"], ["Work", "Danielle's Projects"])
 
-    # Instantiate MainWindow
     win = MainWindow()
     win.resize(1180, 750)
     win.show()
 
-    # Process events to allow UI layout and render
     app.processEvents()
     time.sleep(0.5)
     app.processEvents()
 
-    # Capture 1: Board with Tag Side Panel in English
     artifacts_dir = Path(r"C:\Users\evion\.gemini\antigravity\brain\91649549-e45d-4eac-8bbb-65bfebabec43")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    
-    pix1 = win.grab()
-    pix1.save(str(artifacts_dir / "screenshot_tags_en.png"))
-    print("[OK] Captured screenshot_tags_en.png")
 
-    # Toggle to Spanish
-    win.grid_view._toggle_language()
+    from i18n import get_translation_manager
+    i18n_mgr = get_translation_manager()
+
+    # 1. Ensure English and capture Board
+    i18n_mgr.set_language("en")
     app.processEvents()
     time.sleep(0.3)
     app.processEvents()
 
-    pix2 = win.grab()
-    pix2.save(str(artifacts_dir / "screenshot_tags_es.png"))
-    print("[OK] Captured screenshot_tags_es.png")
+    pix1 = win.grab()
+    pix1.save(str(artifacts_dir / "screenshot_board_fullwidth_en.png"))
+    print("[OK] Captured screenshot_board_fullwidth_en.png")
 
-    # Switch back to English
-    win.grid_view._toggle_language()
+    # 2. Switch explicitly to Spanish and capture Board
+    i18n_mgr.set_language("es")
+    app.processEvents()
+    time.sleep(0.4)
     app.processEvents()
 
-    # Show and capture Tag Selector Flyout directly
+    pix2 = win.grab()
+    pix2.save(str(artifacts_dir / "screenshot_board_fullwidth_es.png"))
+    print("[OK] Captured screenshot_board_fullwidth_es.png")
+
+    # 3. Open Help dialog in Spanish and capture
+    help_dlg = HelpAboutDialog(win)
+    help_dlg.show()
+    app.processEvents()
+    time.sleep(0.3)
+    app.processEvents()
+    pix_help = help_dlg.grab()
+    pix_help.save(str(artifacts_dir / "screenshot_help_es.png"))
+    print("[OK] Captured screenshot_help_es.png")
+    help_dlg.close()
+
+    # 4. Open note in editor to verify the dedicated Editor Tags Bar
     if free_notes:
-        flyout = TagSelectorFlyout(free_notes[0]["id"])
-        flyout.show()
+        win._open_note_editor(free_notes[0]["id"])
         app.processEvents()
-        time.sleep(0.3)
+        time.sleep(0.4)
         app.processEvents()
-        pix3 = flyout.grab()
-        pix3.save(str(artifacts_dir / "screenshot_tag_flyout.png"))
-        print("[OK] Captured screenshot_tag_flyout.png")
-        flyout.close()
+
+        pix_editor = win.grab()
+        pix_editor.save(str(artifacts_dir / "screenshot_editor_tags_bar.png"))
+        print("[OK] Captured screenshot_editor_tags_bar.png")
 
     win.close()
     print("[ALL SCREENSHOTS CAPTURED SUCCESSFULLY]")

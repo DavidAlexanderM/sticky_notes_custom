@@ -7,8 +7,10 @@ from PySide6.QtGui import QCursor, QTextCursor
 
 try:
     from ..icons import get_themed_icon
+    from ..i18n import tr
 except ImportError:
     from icons import get_themed_icon
+    from i18n import tr
 
 
 class FormatButton(QPushButton):
@@ -50,76 +52,95 @@ class FormatToolbar(QFrame):
         layout.setSpacing(4)
 
         # Bold
-        self.btn_bold = FormatButton(icon_name="bold", tooltip="Bold (Ctrl+B)", parent=self)
+        self.btn_bold = FormatButton(icon_name="bold", tooltip=f"{tr('tooltip_bold')}", parent=self)
         self.btn_bold.clicked.connect(self.apply_bold)
         layout.addWidget(self.btn_bold)
 
         # Italics
-        self.btn_italic = FormatButton(icon_name="italic", tooltip="Italics (Ctrl+I)", parent=self)
+        self.btn_italic = FormatButton(icon_name="italic", tooltip=f"{tr('tooltip_italic')}", parent=self)
         self.btn_italic.clicked.connect(self.apply_italic)
         layout.addWidget(self.btn_italic)
 
         # Underline
-        self.btn_underline = FormatButton(icon_name="underline", tooltip="Underline (Ctrl+U)", parent=self)
+        self.btn_underline = FormatButton(icon_name="underline", tooltip=f"{tr('tooltip_underline')}", parent=self)
         self.btn_underline.clicked.connect(self.apply_underline)
         layout.addWidget(self.btn_underline)
 
         # Strikethrough
-        self.btn_strike = FormatButton(icon_name="strikethrough", tooltip="Strikethrough", parent=self)
+        self.btn_strike = FormatButton(icon_name="strikethrough", tooltip=tr("tooltip_strike"), parent=self)
         self.btn_strike.clicked.connect(self.apply_strikethrough)
         layout.addWidget(self.btn_strike)
 
         layout.addWidget(self._create_separator())
 
         # Heading
-        self.btn_heading = FormatButton(icon_name="heading", tooltip="Heading (##)", parent=self)
+        self.btn_heading = FormatButton(icon_name="heading", tooltip=f"{tr('tooltip_heading')}", parent=self)
         self.btn_heading.clicked.connect(self.apply_heading)
         layout.addWidget(self.btn_heading)
 
         # Bullet List
-        self.btn_bullet = FormatButton(text=" List", icon_name="list", tooltip="Bullet List (- )", parent=self)
+        self.btn_bullet = FormatButton(text=f" {tr('tooltip_list')}", icon_name="list", tooltip=f"{tr('tooltip_bullet_list')} (- )", parent=self)
         self.btn_bullet.clicked.connect(self.apply_bullet_list)
         layout.addWidget(self.btn_bullet)
 
         # Task Checklist
-        self.btn_check = FormatButton(text=" Task", icon_name="check_square", tooltip="Task Checklist (- [ ])", parent=self)
+        self.btn_check = FormatButton(text=f" {tr('tooltip_task')}", icon_name="check_square", tooltip=f"{tr('tooltip_checklist')} (- [ ])", parent=self)
         self.btn_check.clicked.connect(self.apply_task_list)
         layout.addWidget(self.btn_check)
 
         # Code Block
-        self.btn_code = FormatButton(icon_name="code", tooltip="Code Block (```)", parent=self)
+        self.btn_code = FormatButton(icon_name="code", tooltip=f"{tr('tooltip_code')} (```)", parent=self)
         self.btn_code.clicked.connect(self.apply_code)
         layout.addWidget(self.btn_code)
 
         layout.addWidget(self._create_separator())
 
         # Media: Picture
-        self.btn_picture = FormatButton(text=" Photo", icon_name="image", tooltip="Insert Picture / Photo", parent=self)
+        self.btn_picture = FormatButton(text=f" {tr('tooltip_photo')}", icon_name="image", tooltip=tr("tooltip_image"), parent=self)
         self.btn_picture.clicked.connect(self.add_picture_requested.emit)
         layout.addWidget(self.btn_picture)
 
         # Media: Audio / Voice
-        self.btn_audio = FormatButton(text=" Audio", icon_name="mic", tooltip="Record Voice Note or Attach Audio", parent=self)
+        self.btn_audio = FormatButton(text=f" {tr('tooltip_audio')}", icon_name="mic", tooltip=tr("tooltip_voice"), parent=self)
         self.btn_audio.clicked.connect(self.add_audio_requested.emit)
         layout.addWidget(self.btn_audio)
 
         # Media: Video
-        self.btn_video = FormatButton(text=" Video", icon_name="video", tooltip="Record Desktop Screen or Attach Video", parent=self)
+        self.btn_video = FormatButton(text=f" {tr('tooltip_video')}", icon_name="video", tooltip=tr("tooltip_video"), parent=self)
         self.btn_video.clicked.connect(self._show_video_menu)
         layout.addWidget(self.btn_video)
 
         layout.addStretch()
 
+    def retranslate_ui(self):
+        """Refreshes all button text and tooltips on language change."""
+        self.btn_bold.setToolTip(f"{tr('tooltip_bold')}")
+        self.btn_italic.setToolTip(f"{tr('tooltip_italic')}")
+        self.btn_underline.setToolTip(f"{tr('tooltip_underline')}")
+        self.btn_strike.setToolTip(tr("tooltip_strike"))
+        self.btn_heading.setToolTip(f"{tr('tooltip_heading')}")
+        self.btn_bullet.setText(f" {tr('tooltip_list')}")
+        self.btn_bullet.setToolTip(f"{tr('tooltip_bullet_list')} (- )")
+        self.btn_check.setText(f" {tr('tooltip_task')}")
+        self.btn_check.setToolTip(f"{tr('tooltip_checklist')} (- [ ])")
+        self.btn_code.setToolTip(f"{tr('tooltip_code')} (```)")
+        self.btn_picture.setText(f" {tr('tooltip_photo')}")
+        self.btn_picture.setToolTip(tr("tooltip_image"))
+        self.btn_audio.setText(f" {tr('tooltip_audio')}")
+        self.btn_audio.setToolTip(tr("tooltip_voice"))
+        self.btn_video.setText(f" {tr('tooltip_video')}")
+        self.btn_video.setToolTip(tr("tooltip_video"))
+
     def _show_video_menu(self):
         menu = QMenu(self)
-        record_action = menu.addAction("🔴 Record Desktop Screen...")
+        record_action = menu.addAction(f"🔴 {tr('record_screen')}")
         record_action.triggered.connect(self.record_screen_requested.emit)
 
-        choose_action = menu.addAction("📁 Choose Existing Video File...")
+        choose_action = menu.addAction(f"📁 {tr('choose_video')}")
         choose_action.triggered.connect(self.add_video_requested.emit)
 
         menu.addSeparator()
-        folder_action = menu.addAction("📂 Open Attachments Folder...")
+        folder_action = menu.addAction(f"📂 {tr('open_attachments')}")
         folder_action.triggered.connect(self.open_attachments_requested.emit)
 
         menu.exec(self.btn_video.mapToGlobal(self.btn_video.rect().bottomLeft()))

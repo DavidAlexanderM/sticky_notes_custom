@@ -230,7 +230,7 @@ class NoteCard(QFrame):
             }}
             QLabel#CardTitle {{
                 color: {text_color};
-                font-weight: 700;
+                font-weight: 600;
                 font-size: 14px;
                 background: transparent;
             }}
@@ -242,7 +242,7 @@ class NoteCard(QFrame):
             }}
             QLabel#CardBadges {{
                 font-size: 11px;
-                font-weight: 600;
+                font-weight: 500;
                 color: {text_color};
                 background-color: {badge_bg};
                 border-radius: 6px;
@@ -250,7 +250,7 @@ class NoteCard(QFrame):
             }}
             QLabel#CardTagsBadge {{
                 font-size: 10px;
-                font-weight: 600;
+                font-weight: 500;
                 color: {text_color};
                 background-color: {badge_bg};
                 border-radius: 5px;
@@ -259,7 +259,7 @@ class NoteCard(QFrame):
             QLabel#CardDate {{
                 color: {date_color};
                 font-size: 11px;
-                font-weight: 600;
+                font-weight: 500;
                 background: transparent;
             }}
             QPushButton#CardMenuBtn, QPushButton#CardPaletteBtn {{
@@ -311,17 +311,20 @@ class NoteCard(QFrame):
 
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if not lines:
-            return "Empty note"
+            return tr("empty_note", "Empty note")
 
         clean = "  ".join(lines)
         return clean[:95] + ("..." if len(clean) > 95 else "")
 
     def _format_date(self, iso_date: str) -> str:
         try:
-            dt = datetime.fromisoformat(iso_date)
-            return dt.strftime("%b %d, %I:%M %p")
+            try:
+                from ..i18n import format_localized_date
+            except ImportError:
+                from i18n import format_localized_date
+            return format_localized_date(iso_date)
         except Exception:
-            return "Recently"
+            return tr("recently", "Recently")
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:

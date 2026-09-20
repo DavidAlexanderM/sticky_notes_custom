@@ -142,6 +142,7 @@ class StickyNotesGridView(QWidget):
 
         self.theme_mgr = get_theme_manager()
         self.i18n = get_translation_manager()
+        self.i18n.language_changed.connect(self._apply_language_change)
         self.active_project_id = database.get_active_project_id()
         self.all_notes: List[dict] = []
         self.note_cards: List[NoteCard] = []
@@ -152,24 +153,10 @@ class StickyNotesGridView(QWidget):
         self.anchor_card_index: int = -1
         self.focused_card_index: int = -1
 
-        # Root Layout: Tag Side Panel on Left + Main Board on Right
-        root_layout = QHBoxLayout(self)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
-
-        # Tag Side Panel (Collapsible, custom tags first)
-        self.tag_side_panel = TagSidePanel(self)
-        self.tag_side_panel.tag_selected.connect(self._on_tag_filter_selected)
-        self.tag_side_panel.tags_modified.connect(self.load_notes)
-        root_layout.addWidget(self.tag_side_panel)
-
-        # Main Board Container Widget
-        board_container = QWidget(self)
-        board_container.setObjectName("BoardContainer")
-        self.main_layout = QVBoxLayout(board_container)
+        # Main Board Layout (100% width, unobstructed for smooth drag & drop stack merging)
+        self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(24, 20, 24, 16)
         self.main_layout.setSpacing(14)
-        root_layout.addWidget(board_container, 1)
 
         # Header Bar
         self.header_layout = QHBoxLayout()
@@ -194,10 +181,10 @@ class StickyNotesGridView(QWidget):
         self.header_layout.addWidget(self.title_label)
 
         # Back to Board Button (visible when inside a stack)
-        self.back_to_board_btn = QPushButton("← Back to Board", self)
+        self.back_to_board_btn = QPushButton(f"← {tr('back_to_board')}", self)
         self.back_to_board_btn.setObjectName("BackToBoardBtn")
         self.back_to_board_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.back_to_board_btn.setToolTip("Return to main board showing all stacks and free notes")
+        self.back_to_board_btn.setToolTip(tr("back_to_board_tooltip"))
         self.back_to_board_btn.clicked.connect(lambda: self._switch_active_project("default"))
         self.back_to_board_btn.setVisible(False)
         self.header_layout.addWidget(self.back_to_board_btn)
@@ -210,15 +197,6 @@ class StickyNotesGridView(QWidget):
         self.header_layout.addWidget(self.project_btn)
 
         self.header_layout.addStretch()
-
-        # Tag Side Panel Toggle Button (🏷️)
-        self.toggle_tags_btn = QPushButton(self)
-        self.toggle_tags_btn.setObjectName("EditorHeaderBtn")
-        self.toggle_tags_btn.setFixedSize(36, 36)
-        self.toggle_tags_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.toggle_tags_btn.setToolTip("Toggle Tag Panel")
-        self.toggle_tags_btn.clicked.connect(self.tag_side_panel.toggle_collapse)
-        self.header_layout.addWidget(self.toggle_tags_btn)
 
         # Bilingual Language Switcher Button (🌐 EN / 🌐 ES)
         self.lang_btn = QPushButton(f"🌐 {self.i18n.current_language.upper()}", self)
@@ -275,47 +253,44 @@ class StickyNotesGridView(QWidget):
         chips_layout.setContentsMargins(0, 0, 0, 0)
 
         self.pill_buttons = {}
-        all_pill = QPushButton("All", self)
-        all_pill.setObjectName("FilterPill")
-        all_pill.setProperty("active", True)
-        all_pill.setToolTip("Show notes of all colors")
-        all_pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        all_pill.clicked.connect(lambda: self._set_color_filter(None))
-        chips_layout.addWidget(all_pill)
-        self.pill_buttons[None] = all_pill
+        self.all_pill = QPushButton(tr("color_filter_all"), self)
+        self.all_pill.setObjectName("FilterPill")
+        self.all_pill.setProperty("active", True)
+        self.all_pill.setToolTip(tr("color_filter_all"))
+        self.all_pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.all_pill.clicked.connect(lambda: self._set_color_filter(None))
+        chips_layout.addWidget(self.all_pill)
+        self.pill_buttons[None] = self.all_pill
 
         for c in NOTE_COLORS:
             hex_val = c["hex"]
             pill = ColorDotPillButton(hex_val, c["name"], self)
+            pill.setToolTip(tr(c.get("key", f"color_{c['name'].lower().replace(' ', '_')}"), f"{c['name']} notes"))
             pill.clicked.connect(lambda _, h=hex_val: self._set_color_filter(h))
             chips_layout.addWidget(pill)
             self.pill_buttons[hex_val] = pill
 
         self._update_pill_styles()
 
+        # Tag Filter Dropdown Button (on board, tags behave as a filtering option)
+        self.tag_filter_btn = QPushButton(self)
+        self.tag_filter_btn.setObjectName("FilterPill")
+        self.tag_filter_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.tag_filter_btn.clicked.connect(self._show_tag_filter_menu)
+        self._update_tag_filter_btn_label()
+        chips_layout.addWidget(self.tag_filter_btn)
+
         chips_layout.addStretch()
 
         # Sort Dropdown
-        sort_lbl = QLabel("Sort:", self)
-        sort_lbl.setStyleSheet("font-size: 12px; font-weight: 600;")
-        chips_layout.addWidget(sort_lbl)
+        self.sort_lbl = QLabel(tr("sort_label"), self)
+        self.sort_lbl.setStyleSheet("font-size: 12px; font-weight: 600;")
+        chips_layout.addWidget(self.sort_lbl)
 
         self.sort_combo = QComboBox(self)
         self.sort_combo.setObjectName("SortComboBox")
         self.sort_combo.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.sort_combo.addItem("📅 Created (Newest)", "created_desc")
-        self.sort_combo.addItem("📅 Created (Oldest)", "created_asc")
-        self.sort_combo.addItem("⏱️ Recently Edited", "updated_desc")
-        self.sort_combo.addItem("⏱️ Oldest Edited", "updated_asc")
-        self.sort_combo.addItem("🔤 Title (A-Z)", "title_asc")
-
-        # Set initial sort selection based on persisted preference
-        saved_sort = database.get_sort_preference()
-        for idx in range(self.sort_combo.count()):
-            if self.sort_combo.itemData(idx) == saved_sort:
-                self.sort_combo.setCurrentIndex(idx)
-                break
-
+        self._repopulate_sort_combo()
         self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         chips_layout.addWidget(self.sort_combo)
 
@@ -468,6 +443,7 @@ class StickyNotesGridView(QWidget):
             self.new_note_btn.setText(f" {tr('new_note')}")
         if hasattr(self, 'back_to_board_btn'):
             self.back_to_board_btn.setText(f"← {tr('back_to_board')}")
+            self.back_to_board_btn.setToolTip(tr("back_to_board_tooltip"))
         if hasattr(self, 'select_all_btn'):
             self.select_all_btn.setText(f" {tr('select_all')}")
         if hasattr(self, 'delete_selected_btn'):
@@ -476,15 +452,140 @@ class StickyNotesGridView(QWidget):
             self.clear_selection_btn.setText(f" {tr('clear')}")
         if hasattr(self, 'move_selected_btn'):
             self.move_selected_btn.setText(f" {tr('move_to_stack')}")
-        if hasattr(self, 'toggle_tags_btn'):
-            self.toggle_tags_btn.setToolTip(tr("tags_header") + " (Toggle)")
-        if hasattr(self, 'tag_side_panel'):
-            self.tag_side_panel.refresh_tags()
+        if hasattr(self, 'sort_lbl'):
+            self.sort_lbl.setText(tr("sort_label"))
+        if hasattr(self, 'sort_combo'):
+            self._repopulate_sort_combo()
+        if hasattr(self, 'all_pill'):
+            self.all_pill.setText(tr("color_filter_all"))
+            self.all_pill.setToolTip(tr("color_filter_all"))
+        if hasattr(self, 'pill_buttons'):
+            for hex_val, pill in self.pill_buttons.items():
+                if hex_val is not None and hasattr(pill, 'color_name'):
+                    pill.setToolTip(f"{pill.color_name} {tr('notes_count', count=2)}")
+        self._update_tag_filter_btn_label()
         self._update_project_button_label()
         self._filter_and_render_notes()
 
+    def _repopulate_sort_combo(self):
+        """Re-populates sort options with current language translations while preserving selection."""
+        saved_sort = database.get_sort_preference()
+        self.sort_combo.blockSignals(True)
+        self.sort_combo.clear()
+        self.sort_combo.addItem(tr("sort_created_desc"), "created_desc")
+        self.sort_combo.addItem(tr("sort_created_asc"), "created_asc")
+        self.sort_combo.addItem(tr("sort_updated_desc"), "updated_desc")
+        self.sort_combo.addItem(tr("sort_updated_asc"), "updated_asc")
+        self.sort_combo.addItem(tr("sort_title_asc"), "title_asc")
+        for idx in range(self.sort_combo.count()):
+            if self.sort_combo.itemData(idx) == saved_sort:
+                self.sort_combo.setCurrentIndex(idx)
+                break
+        self.sort_combo.blockSignals(False)
+
+    def _update_tag_filter_btn_label(self):
+        """Updates the tag filter button text and active state."""
+        if not hasattr(self, 'tag_filter_btn'):
+            return
+        if self.active_tag_filter is None:
+            self.tag_filter_btn.setText(f"🏷️ {tr('all_tags')}")
+            self.tag_filter_btn.setProperty("active", False)
+        elif self.active_tag_filter == "__untagged__":
+            self.tag_filter_btn.setText(f"📄 {tr('untagged')}")
+            self.tag_filter_btn.setProperty("active", True)
+        else:
+            self.tag_filter_btn.setText(f"🏷️ #{self.active_tag_filter}")
+            self.tag_filter_btn.setProperty("active", True)
+        self.tag_filter_btn.style().unpolish(self.tag_filter_btn)
+        self.tag_filter_btn.style().polish(self.tag_filter_btn)
+
+    def _show_tag_filter_menu(self):
+        """Displays popup menu for tag filtering on the board, showing Custom Tags first."""
+        menu = QMenu(self)
+        theme = self.theme_mgr.current_theme
+        is_dark = self.theme_mgr.is_dark_mode()
+        try:
+            from ..styles import THEME_PALETTES
+        except ImportError:
+            from styles import THEME_PALETTES
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {pal.get('menu_bg', '#1E1F20' if is_dark else '#FFFFFF')};
+                border: 1px solid {pal.get('border', '#444746' if is_dark else '#CBD5E1')};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 6px 18px 6px 10px;
+                font-size: 13px;
+                border-radius: 4px;
+                color: {pal.get('text_primary', '#E3E3E3' if is_dark else '#0F172A')};
+            }}
+            QMenu::item:selected {{
+                background-color: {pal.get('btn_hover', '#333537' if is_dark else '#F1F5F9')};
+                color: {pal.get('accent', '#8AB4F8' if is_dark else '#2563EB')};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background-color: {pal.get('border_subtle', '#2D2E30' if is_dark else '#E2E8F0')};
+                margin: 4px 6px;
+            }}
+        """)
+
+        # Option: All Tags
+        act_all = menu.addAction(f"🏷️ {tr('all_tags')}")
+        act_all.setCheckable(True)
+        act_all.setChecked(self.active_tag_filter is None)
+
+        # Option: Untagged
+        act_untagged = menu.addAction(f"📄 {tr('untagged')}")
+        act_untagged.setCheckable(True)
+        act_untagged.setChecked(self.active_tag_filter == "__untagged__")
+
+        menu.addSeparator()
+
+        # Custom Tags FIRST
+        custom_tags = database.get_all_custom_tags()
+        tag_actions = {}
+        if custom_tags:
+            custom_section = menu.addAction(f"⭐ {tr('custom_tags').upper()}")
+            custom_section.setEnabled(False)
+            for tag in custom_tags:
+                tag_name = tag["name"]
+                act = menu.addAction(f"#{tag_name}")
+                act.setCheckable(True)
+                act.setChecked(self.active_tag_filter == tag_name)
+                tag_actions[act] = tag_name
+            menu.addSeparator()
+
+        # System / Predetermined Tags SECOND
+        sys_section = menu.addAction(f"📁 {tr('predetermined_tags').upper()}")
+        sys_section.setEnabled(False)
+        for pt in database.PREDETERMINED_TAGS:
+            icon = pt.get("icon", "🏷️")
+            disp_name = tr(pt["key"])
+            tag_name = pt["default_name"]
+            act = menu.addAction(f"{icon} {disp_name}")
+            act.setCheckable(True)
+            act.setChecked(self.active_tag_filter == tag_name or self.active_tag_filter == disp_name)
+            tag_actions[act] = tag_name
+
+        pos = self.tag_filter_btn.mapToGlobal(self.tag_filter_btn.rect().bottomLeft())
+        selected_action = menu.exec(pos)
+
+        if selected_action == act_all:
+            self._on_tag_filter_selected(None)
+        elif selected_action == act_untagged:
+            self._on_tag_filter_selected("__untagged__")
+        elif selected_action in tag_actions:
+            self._on_tag_filter_selected(tag_actions[selected_action])
+
     def _on_tag_filter_selected(self, tag_key: str):
+        """Applies tag filter and re-renders grid."""
         self.active_tag_filter = tag_key if tag_key else None
+        self._update_tag_filter_btn_label()
         self._filter_and_render_notes()
 
     def _update_project_button_label(self):
@@ -499,9 +600,9 @@ class StickyNotesGridView(QWidget):
         if self.active_project_id == "all":
             self.title_label.setText("")
             self.title_label.setVisible(False)
-            self.project_btn.setText(f" All Notes ({all_count}) ▾")
+            self.project_btn.setText(f" {tr('all_notes')} ({all_count}) ▾")
             self.project_btn.setIcon(get_themed_icon("layers", role="btn_text", theme=theme, size=16))
-            self.project_btn.setToolTip("Active Collection: All Notes\nClick to switch project stack")
+            self.project_btn.setToolTip(f"{tr('all_notes')}\n{tr('active_stack_tooltip', name=tr('all_notes'))}")
             return
 
         active_proj = next((p for p in projects if p["id"] == self.active_project_id), None)
@@ -516,10 +617,10 @@ class StickyNotesGridView(QWidget):
             self.title_label.setText("")
             self.title_label.setVisible(False)
             count = active_proj.get("note_count", 0) if active_proj else 0
-            self.project_btn.setText(f" Free Notes ({count}) ▾")
+            self.project_btn.setText(f" {tr('free_notes')} ({count}) ▾")
             p_color = active_proj.get("color", "#F9AB00") if active_proj else "#F9AB00"
             self.project_btn.setIcon(render_note_stack_icon(p_color, size=18))
-            self.project_btn.setToolTip("Active Collection: Free Notes\nClick to switch project stack")
+            self.project_btn.setToolTip(f"{tr('free_notes')}\n{tr('active_stack_tooltip', name=tr('free_notes'))}")
         else:
             name = active_proj["name"] if active_proj else "Stack"
             count = active_proj.get("note_count", 0) if active_proj else 0
@@ -528,7 +629,7 @@ class StickyNotesGridView(QWidget):
             self.title_label.setVisible(True)
             self.project_btn.setText(f" {name} ({count}) ▾")
             self.project_btn.setIcon(render_note_stack_icon(p_color, size=18))
-            self.project_btn.setToolTip(f"Active Stack: {name}\nClick to switch project stack")
+            self.project_btn.setToolTip(tr("active_stack_tooltip", name=name))
 
     def _show_project_menu(self):
         """Displays dropdown menu listing all project stacks with note counts and management options."""
@@ -569,7 +670,7 @@ class StickyNotesGridView(QWidget):
         all_count = sum(p.get("note_count", 0) for p in projects)
 
         # "All Notes" option
-        act_all = menu.addAction(get_themed_icon("layers", role="btn_text", theme=theme, size=16), f"All Notes ({all_count})")
+        act_all = menu.addAction(get_themed_icon("layers", role="btn_text", theme=theme, size=16), tr("all_notes_count", count=all_count))
         act_all.setCheckable(True)
         act_all.setChecked(self.active_project_id == "all")
 
@@ -590,9 +691,9 @@ class StickyNotesGridView(QWidget):
         menu.addSeparator()
 
         # New Project Stack
-        act_new = menu.addAction(get_themed_icon("plus", role="btn_text", theme=theme, size=15), "New Project Stack...")
+        act_new = menu.addAction(get_themed_icon("plus", role="btn_text", theme=theme, size=15), tr("create_new_stack"))
         # Manage Project Stacks
-        act_manage = menu.addAction("⚙️ Manage Stacks...")
+        act_manage = menu.addAction(f"⚙️ {tr('manage_stacks')}")
 
         pos = self.project_btn.mapToGlobal(self.project_btn.rect().bottomLeft())
         action = menu.exec(pos)
@@ -751,8 +852,9 @@ class StickyNotesGridView(QWidget):
         """Clears search input and resets active color and tag filters."""
         self.search_input.clear()
         self._set_color_filter(None)
-        if hasattr(self, 'tag_side_panel'):
-            self.tag_side_panel._select_tag(None)
+        self.active_tag_filter = None
+        self._update_tag_filter_btn_label()
+        self._filter_and_render_notes()
 
     def _on_search_changed(self, text: str):
         self._filter_and_render_notes()
@@ -764,8 +866,7 @@ class StickyNotesGridView(QWidget):
         else:
             self.all_notes = database.get_all_notes(self.active_project_id)
         self._update_project_button_label()
-        if hasattr(self, 'tag_side_panel'):
-            self.tag_side_panel.refresh_tags()
+        self._update_tag_filter_btn_label()
         self._filter_and_render_notes()
 
     def _filter_and_render_notes(self):
@@ -847,9 +948,9 @@ class StickyNotesGridView(QWidget):
             if search_query or self.current_color_filter or self.active_tag_filter:
                 icon_lbl = QLabel("🔍", empty_frame)
                 icon_lbl.setStyleSheet("font-size: 32px;")
-                title_lbl = QLabel("No notes or stacks matched your filters.", empty_frame)
+                title_lbl = QLabel(tr("no_notes_matched"), empty_frame)
                 title_lbl.setObjectName("EmptyStateTitle")
-                btn_clear = QPushButton("Clear Filter", empty_frame)
+                btn_clear = QPushButton(tr("clear_filters_btn"), empty_frame)
                 btn_clear.setObjectName("SelectModeButton")
                 btn_clear.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 btn_clear.clicked.connect(self._clear_filters)
@@ -911,7 +1012,7 @@ class StickyNotesGridView(QWidget):
             card.selection_toggled.connect(self._on_card_selection_toggled)
             card.move_to_project_requested.connect(self._on_card_move_to_project)
             card.create_stack_requested.connect(self._on_create_stack_from_notes)
-            card.tags_updated.connect(lambda _: self.tag_side_panel.refresh_tags())
+            card.tags_updated.connect(lambda _: self._update_tag_filter_btn_label())
             
             self.grid_layout.addWidget(card, row, col)
             self.note_cards.append(card)
@@ -984,8 +1085,8 @@ class StickyNotesGridView(QWidget):
 
         confirm = QMessageBox.question(
             self,
-            "Confirm Delete",
-            f"Are you sure you want to permanently delete {count} selected note(s)?",
+            tr("confirm_delete_title"),
+            tr("confirm_delete_multiple", count=count),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -998,11 +1099,11 @@ class StickyNotesGridView(QWidget):
         """Refreshes card visual selection and focuses, and manages action bar visibility."""
         count = len(self.selected_note_ids)
         self.action_bar.setVisible(count > 0)
-        self.selection_count_label.setText(f"{count} note{'s' if count != 1 else ''} selected")
+        self.selection_count_label.setText(tr("one_note_selected") if count == 1 else tr("notes_selected", count=count))
         self.delete_selected_btn.setEnabled(count > 0)
         
         all_selected = count == len(self.note_cards) and count > 0
-        self.select_all_btn.setText(" Deselect All" if all_selected else " Select All")
+        self.select_all_btn.setText(f" {tr('clear')}" if all_selected else f" {tr('select_all')}")
 
         for idx, card in enumerate(self.note_cards):
             card.set_selected(card.note_id in self.selected_note_ids)
@@ -1132,8 +1233,8 @@ class StickyNotesGridView(QWidget):
     def _on_card_delete_requested(self, note_id: str):
         confirm = QMessageBox.question(
             self,
-            "Confirm Delete",
-            "Are you sure you want to permanently delete this note?",
+            tr("confirm_delete_title"),
+            tr("confirm_delete_note"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )

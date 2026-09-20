@@ -20,6 +20,7 @@ try:
     from ..database import get_db_path
     from ..media_manager import get_attachments_dir
     from ..version import __version__, AUTHOR, LICENSE, HOMEPAGE
+    from ..i18n import tr, get_translation_manager
     from .update_dialog import UpdateDialog
 except ImportError:
     from theme_manager import get_theme_manager
@@ -28,6 +29,7 @@ except ImportError:
     from database import get_db_path
     from media_manager import get_attachments_dir
     from version import __version__, AUTHOR, LICENSE, HOMEPAGE, APP_NAME, APP_DESCRIPTION
+    from i18n import tr, get_translation_manager
     from components.update_dialog import UpdateDialog
 
 
@@ -38,7 +40,7 @@ class HelpAboutDialog(QDialog):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"{APP_NAME} - Help & About (v{__version__})")
+        self.setWindowTitle(f"{APP_NAME} - {tr('help_dialog_title')} (v{__version__})")
         self.resize(680, 560)
         self.setMinimumSize(560, 440)
         
@@ -58,7 +60,7 @@ class HelpAboutDialog(QDialog):
         bottom_row = QHBoxLayout()
         bottom_row.addStretch()
         
-        self.close_btn = QPushButton("Close", self)
+        self.close_btn = QPushButton(tr("close_btn"), self)
         self.close_btn.setObjectName("SelectModeButton")
         self.close_btn.setFixedSize(90, 32)
         self.close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -72,15 +74,16 @@ class HelpAboutDialog(QDialog):
     def _populate_tabs(self):
         """Build or rebuild all 3 tabs with current theme colors."""
         self.tabs.clear()
-        self.tabs.addTab(self._create_shortcuts_tab(), "Keyboard Shortcuts")
-        self.tabs.addTab(self._create_markdown_tab(), "Markdown & Media")
-        self.tabs.addTab(self._create_about_tab(), "About & Storage")
+        self.tabs.addTab(self._create_shortcuts_tab(), tr("tab_shortcuts"))
+        self.tabs.addTab(self._create_markdown_tab(), tr("tab_markdown"))
+        self.tabs.addTab(self._create_about_tab(), tr("tab_about"))
 
     def _create_shortcuts_tab(self) -> QWidget:
         """Tab 1: Visual Keyboard Shortcuts Cheatsheet."""
         theme = self.theme_mgr.current_theme
         pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
         is_dark = self.theme_mgr.is_dark_mode()
+        is_es = get_translation_manager().current_language == "es"
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -91,34 +94,59 @@ class HelpAboutDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(14)
 
-        intro = QLabel("Navigate, select, and organize your sticky notes with fluid keyboard shortcuts:")
+        intro_text = "Navega, selecciona y organiza tus notas con atajos fluidos de teclado:" if is_es else "Navigate, select, and organize your sticky notes with fluid keyboard shortcuts:"
+        intro = QLabel(intro_text)
         intro.setStyleSheet(f"font-weight: 600; font-size: 13px; color: {pal['text_primary']};")
         layout.addWidget(intro)
 
-        shortcuts = [
-            ("Selection & Navigation", [
-                ("Shift + Click", "Extend range selection from last selected note"),
-                ("Ctrl + Click", "Toggle individual note selection in a group"),
-                ("↑  ↓  ←  →", "Navigate and focus note cards across the grid"),
-                ("Shift + Arrows", "Expand or shrink selection range via keyboard"),
-                ("Enter / Return", "Open currently focused note in full editor"),
-                ("Delete / Backspace", "Delete selected note(s) with confirmation"),
-                ("Ctrl + A", "Select all notes currently visible in the grid"),
-                ("Escape", "Clear active selection or cancel operation"),
-            ]),
-            ("App Actions", [
-                ("Ctrl + N", "Create a new blank sticky note"),
-                ("Ctrl + F", "Jump focus directly to search bar"),
-                ("F1 / Ctrl + H", "Open this Help & Keyboard Shortcuts guide"),
-            ]),
-            ("Writing & Formatting (Editor)", [
-                ("Ctrl + B", "Toggle **Bold** syntax"),
-                ("Ctrl + I", "Toggle *Italic* syntax"),
-                ("Ctrl + U", "Toggle <u>Underline</u> syntax"),
-                ("Ctrl + K", "Insert or wrap selection with a hyperlink"),
-                ("Drag & Drop", "Drop images, audio, or video files straight into note"),
-            ])
-        ]
+        if is_es:
+            shortcuts = [
+                ("Selección y Navegación", [
+                    ("Shift + Clic", "Extender rango de selección desde la última nota"),
+                    ("Ctrl + Clic", "Alternar selección de notas individuales en un grupo"),
+                    ("↑  ↓  ←  →", "Navegar y enfocar tarjetas de notas en el tablero"),
+                    ("Shift + Flechas", "Expandir o reducir rango de selección con teclado"),
+                    ("Enter / Intro", "Abrir la nota enfocada en el editor completo"),
+                    ("Supr / Backspace", "Eliminar nota(s) seleccionada(s) con confirmación"),
+                    ("Ctrl + A", "Seleccionar todas las notas visibles en el tablero"),
+                    ("Escape", "Limpiar selección activa o cancelar operación"),
+                ]),
+                ("Acciones de la Aplicación", [
+                    ("Ctrl + N", "Crear una nueva nota adhesiva en blanco"),
+                    ("Ctrl + F", "Ir directamente a la barra de búsqueda"),
+                    ("F1 / Ctrl + H", "Abrir esta guía de Ayuda y Atajos de Teclado"),
+                ]),
+                ("Escritura y Formato (Editor)", [
+                    ("Ctrl + B", "Alternar sintaxis de **Negrita**"),
+                    ("Ctrl + I", "Alternar sintaxis de *Cursiva*"),
+                    ("Ctrl + U", "Alternar sintaxis de <u>Subrayado</u>"),
+                    ("Arrastrar y Soltar", "Soltar imágenes, audios o videos directamente en la nota"),
+                ])
+            ]
+        else:
+            shortcuts = [
+                ("Selection & Navigation", [
+                    ("Shift + Click", "Extend range selection from last selected note"),
+                    ("Ctrl + Click", "Toggle individual note selection in a group"),
+                    ("↑  ↓  ←  →", "Navigate and focus note cards across the grid"),
+                    ("Shift + Arrows", "Expand or shrink selection range via keyboard"),
+                    ("Enter / Return", "Open currently focused note in full editor"),
+                    ("Delete / Backspace", "Delete selected note(s) with confirmation"),
+                    ("Ctrl + A", "Select all notes currently visible in the grid"),
+                    ("Escape", "Clear active selection or cancel operation"),
+                ]),
+                ("App Actions", [
+                    ("Ctrl + N", "Create a new blank sticky note"),
+                    ("Ctrl + F", "Jump focus directly to search bar"),
+                    ("F1 / Ctrl + H", "Open this Help & Keyboard Shortcuts guide"),
+                ]),
+                ("Writing & Formatting (Editor)", [
+                    ("Ctrl + B", "Toggle **Bold** syntax"),
+                    ("Ctrl + I", "Toggle *Italic* syntax"),
+                    ("Ctrl + U", "Toggle <u>Underline</u> syntax"),
+                    ("Drag & Drop", "Drop images, audio, or video files straight into note"),
+                ])
+            ]
 
         if is_dark:
             badge_style = """
@@ -198,14 +226,25 @@ class HelpAboutDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
 
-        sections = [
-            ("Headings", "# Heading 1\n## Heading 2\n### Heading 3", "Creates crisp hierarchical headings with visual divider lines."),
-            ("Bold & Italic", "**Bold text** or __Bold__\n*Italic text* or _Italic_\n~~Strikethrough~~", "Emphasizes important phrases inline."),
-            ("Interactive Task Lists", "- [ ] Incomplete task item\n- [x] Completed task item", "Rendered as interactive clickable checkboxes in preview."),
-            ("Code & Snippets", "`inline_code()`\n\n```python\ndef greet():\n    return 'Hello World'\n```", "Styled in monospace font with subtle tinted code blocks."),
-            ("Drag & Drop Media", "Drag images, voice memos, or video clips directly from Windows Explorer into the editor.", "Files are automatically copied into the local attachment vault without altering your originals."),
-            ("Audio Playback", "🎵 [Play Voice Note: audio.m4a](file:///...)", "Click audio links to launch the integrated in-app player bar with position scrubbing.")
-        ]
+        is_es = get_translation_manager().current_language == "es"
+        if is_es:
+            sections = [
+                ("Encabezados", "# Encabezado 1\n## Encabezado 2\n### Encabezado 3", "Crea encabezados jerárquicos claros con líneas divisoras visuales."),
+                ("Negrita y Cursiva", "**Texto en negrita** o __Negrita__\n*Texto en cursiva* o _Cursiva_\n~~Tachado~~", "Enfatiza frases importantes dentro del texto."),
+                ("Listas de Tareas Interactivas", "- [ ] Tarea pendiente\n- [x] Tarea completada", "Se muestran como casillas interactivas marcables en la vista previa."),
+                ("Código y Fragmentos", "`código_en_línea()`\n\n```python\ndef saludar():\n    return 'Hola Mundo'\n```", "Estilizado con fuente monoespaciada y bloques de código sombreados."),
+                ("Arrastrar y Soltar Archivos", "Arrastra imágenes, audios o videos directamente desde el Explorador de Windows al editor.", "Los archivos se copian automáticamente al almacén de adjuntos sin alterar los originales."),
+                ("Reproducción de Audio", "🎵 [Play Voice Note: audio.m4a](file:///...)", "Haz clic en enlaces de audio para iniciar la barra de reproducción integrada.")
+            ]
+        else:
+            sections = [
+                ("Headings", "# Heading 1\n## Heading 2\n### Heading 3", "Creates crisp hierarchical headings with visual divider lines."),
+                ("Bold & Italic", "**Bold text** or __Bold__\n*Italic text* or _Italic_\n~~Strikethrough~~", "Emphasizes important phrases inline."),
+                ("Interactive Task Lists", "- [ ] Incomplete task item\n- [x] Completed task item", "Rendered as interactive clickable checkboxes in preview."),
+                ("Code & Snippets", "`inline_code()`\n\n```python\ndef greet():\n    return 'Hello World'\n```", "Styled in monospace font with subtle tinted code blocks."),
+                ("Drag & Drop Media", "Drag images, voice memos, or video clips directly from Windows Explorer into the editor.", "Files are automatically copied into the local attachment vault without altering your originals."),
+                ("Audio Playback", "🎵 [Play Voice Note: audio.m4a](file:///...)", "Click audio links to launch the integrated in-app player bar with position scrubbing.")
+            ]
 
         for title, syntax, notes in sections:
             t_lbl = QLabel(title)
@@ -238,6 +277,7 @@ class HelpAboutDialog(QDialog):
         """Tab 3: App metadata and storage directory paths with scroll area and copyable inputs."""
         theme = self.theme_mgr.current_theme
         pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+        is_es = get_translation_manager().current_language == "es"
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -275,8 +315,8 @@ class HelpAboutDialog(QDialog):
         # Metadata info
         meta_layout = QHBoxLayout()
         meta_layout.setSpacing(20)
-        lbl_author = QLabel(f"<span style='color: {pal['text_primary']};'><b>Author:</b> {AUTHOR}</span>")
-        lbl_license = QLabel(f"<span style='color: {pal['text_primary']};'><b>License:</b> {LICENSE}</span>")
+        lbl_author = QLabel(f"<span style='color: {pal['text_primary']};'><b>{'Autor' if is_es else 'Author'}:</b> {AUTHOR}</span>")
+        lbl_license = QLabel(f"<span style='color: {pal['text_primary']};'><b>{'Licencia' if is_es else 'License'}:</b> {LICENSE}</span>")
         meta_layout.addWidget(lbl_author)
         meta_layout.addWidget(lbl_license)
         meta_layout.addStretch()
@@ -292,7 +332,7 @@ class HelpAboutDialog(QDialog):
             row = QHBoxLayout()
             row.setSpacing(6)
 
-            line_edit = QLineEdit(path_val)
+            line_edit = QLineEdit(path_val, container)
             line_edit.setReadOnly(True)
             line_edit.setCursorPosition(0)
             line_edit.setStyleSheet(f"""
@@ -308,18 +348,18 @@ class HelpAboutDialog(QDialog):
             """)
             row.addWidget(line_edit, 1)
 
-            copy_btn = QPushButton("📋 Copy")
+            copy_btn = QPushButton(f"📋 {tr('copy')}")
             copy_btn.setObjectName("SelectModeButton")
             copy_btn.setToolTip("Copy path to clipboard")
             copy_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             def _on_copy(p=path_val, btn=copy_btn):
                 QApplication.clipboard().setText(p)
-                btn.setText("✓ Copied!")
-                QTimer.singleShot(1500, lambda: btn.setText("📋 Copy"))
+                btn.setText(tr("copied"))
+                QTimer.singleShot(1500, lambda: btn.setText(f"📋 {tr('copy')}"))
             copy_btn.clicked.connect(_on_copy)
             row.addWidget(copy_btn)
 
-            open_btn = QPushButton("📂 Open")
+            open_btn = QPushButton(f"📂 {tr('open')}")
             open_btn.setObjectName("SelectModeButton")
             open_btn.setToolTip("Open folder in Windows Explorer")
             open_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -330,8 +370,10 @@ class HelpAboutDialog(QDialog):
             vbox.addLayout(row)
             return vbox
 
-        info_layout.addLayout(_make_path_entry("Database SQLite File:", db_path, is_dir=False))
-        info_layout.addLayout(_make_path_entry("Attachments Vault Directory:", attach_path, is_dir=True))
+        db_label = "Archivo de Base de Datos SQLite:" if is_es else "Database SQLite File:"
+        attach_label = "Carpeta de Archivos Adjuntos:" if is_es else "Attachments Vault Directory:"
+        info_layout.addLayout(_make_path_entry(db_label, db_path, is_dir=False))
+        info_layout.addLayout(_make_path_entry(attach_label, attach_path, is_dir=True))
 
         layout.addWidget(info_box)
 
@@ -339,14 +381,16 @@ class HelpAboutDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
 
-        github_btn = QPushButton(" GitHub Repository", self)
+        gh_text = " Repositorio en GitHub" if is_es else " GitHub Repository"
+        github_btn = QPushButton(gh_text, self)
         github_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
         github_btn.setObjectName("SelectModeButton")
         github_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(HOMEPAGE)))
         btn_layout.addWidget(github_btn)
 
-        update_btn = QPushButton(" Check for Updates...", self)
+        up_text = " Buscar Actualizaciones..." if is_es else " Check for Updates..."
+        update_btn = QPushButton(up_text, self)
         update_btn.setIcon(get_themed_icon("clock", role="btn_text", theme=theme, size=16))
         update_btn.setObjectName("SelectModeButton")
         update_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))

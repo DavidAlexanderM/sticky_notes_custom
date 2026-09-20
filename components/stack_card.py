@@ -20,12 +20,14 @@ try:
     from ..styles import is_dark_color, THEME_PALETTES
     from ..icons import get_icon, get_themed_icon
     from ..theme_manager import get_theme_manager
+    from ..i18n import tr
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from styles import is_dark_color, THEME_PALETTES
     from icons import get_icon, get_themed_icon
     from theme_manager import get_theme_manager
+    from i18n import tr
     import database
 
 
@@ -78,7 +80,8 @@ class StackCard(QFrame):
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(4)
 
-        count_text = f"📚 {self.note_count} {'note' if self.note_count == 1 else 'notes'}"
+        count_suffix = tr("one_note_count") if self.note_count == 1 else tr("notes_count", count=self.note_count)
+        count_text = f"📚 {count_suffix}"
         self.badge_lbl = QLabel(count_text, self)
         self.badge_lbl.setObjectName("StackBadge")
         top_row.addWidget(self.badge_lbl, 1)
@@ -87,7 +90,7 @@ class StackCard(QFrame):
         self.menu_btn.setObjectName("CardMenuBtn")
         self.menu_btn.setFixedSize(26, 24)
         self.menu_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.menu_btn.setToolTip("Stack Options")
+        self.menu_btn.setToolTip(tr("stack_options"))
         self.menu_btn.clicked.connect(self._on_menu_clicked)
         top_row.addWidget(self.menu_btn)
 
@@ -97,7 +100,7 @@ class StackCard(QFrame):
         self.name_label = QLabel(self.project.get("name", "Stack"), self)
         self.name_label.setObjectName("StackTitle")
         self.name_label.setWordWrap(True)
-        self.name_label.setToolTip("Double-click or press F2 to rename")
+        self.name_label.setToolTip(tr("rename_stack_hint"))
         self.main_layout.addWidget(self.name_label)
 
         # Inline editor (hidden until F2 / double-click)
@@ -117,7 +120,7 @@ class StackCard(QFrame):
         self.main_layout.addStretch()
 
         # Bottom subtle hint
-        self.hint_label = QLabel("Double-click to open stack", self)
+        self.hint_label = QLabel(tr("double_click_open_stack"), self)
         self.hint_label.setObjectName("StackHint")
         self.hint_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.main_layout.addWidget(self.hint_label)
@@ -401,12 +404,12 @@ class StackCard(QFrame):
             }}
         """)
 
-        act_open = menu.addAction(get_themed_icon("layers", role="btn_text", theme=theme, size=15), "Open Stack")
-        act_rename = menu.addAction(get_themed_icon("edit", role="btn_text", theme=theme, size=15), "Rename Stack (F2)")
-        act_color = menu.addAction(get_icon("palette", color=pal.get("btn_text", "#000"), size=15), "Change Stack Color")
+        act_open = menu.addAction(get_themed_icon("layers", role="btn_text", theme=theme, size=15), tr("open_stack"))
+        act_rename = menu.addAction(get_themed_icon("edit", role="btn_text", theme=theme, size=15), tr("rename_stack"))
+        act_color = menu.addAction(get_icon("palette", color=pal.get("btn_text", "#000"), size=15), tr("change_stack_color"))
         menu.addSeparator()
-        act_dissolve = menu.addAction("Unstack All Notes (Dissolve)")
-        act_delete = menu.addAction(get_icon("trash", color="#EF4444", size=15), "Delete Stack & Notes")
+        act_dissolve = menu.addAction(tr("unstack_all_notes"))
+        act_delete = menu.addAction(get_icon("trash", color="#EF4444", size=15), tr("delete_stack_and_notes"))
 
         action = menu.exec(global_pos)
         if action == act_open:

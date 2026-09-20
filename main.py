@@ -114,7 +114,7 @@ def main():
         app.setWindowIcon(QIcon(str(ico_path)))
     
     # Modern typography
-    font = QFont("Segoe UI Variable Text", 10)
+    font = QFont("Segoe UI", 10)
     font.setStyleHint(QFont.StyleHint.SansSerif)
     app.setFont(font)
     

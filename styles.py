@@ -122,7 +122,7 @@ QMainWindow {{
 
 QWidget#CentralWidget {{
     background-color: {pal["bg_main"]};
-    font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
+    font-family: "Segoe UI", -apple-system, sans-serif;
 }}
 
 QWidget#GridViewContainer, QWidget#EditorViewContainer {{
@@ -666,7 +666,7 @@ def get_markdown_preview_css(theme: str = "light") -> str:
 <style>
 body {{
     background-color: {bg_body};
-    font-family: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, sans-serif;
+    font-family: 'Segoe UI', -apple-system, sans-serif;
     font-size: 14px;
     color: {text_body};
     line-height: 1.6;
