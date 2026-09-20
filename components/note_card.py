@@ -1,11 +1,11 @@
 from datetime import datetime
 import re
-from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtCore import Qt, Signal, QPoint, QMimeData
 from PySide6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QMenu, QGraphicsDropShadowEffect
+    QPushButton, QMenu, QGraphicsDropShadowEffect, QApplication
 )
-from PySide6.QtGui import QColor, QCursor, QMouseEvent, QEnterEvent
+from PySide6.QtGui import QColor, QCursor, QMouseEvent, QEnterEvent, QDrag, QPixmap
 
 try:
     from .color_picker_flyout import ColorPickerFlyout
@@ -30,6 +30,7 @@ class NoteCard(QFrame):
     share_requested = Signal(str)        # Emits note_id
     selection_toggled = Signal(str, bool) # Emits (note_id, is_selected)
     move_to_project_requested = Signal(str, str) # Emits (note_id, target_project_id)
+    create_stack_requested = Signal(str, str)    # Emits (source_note_id, target_note_id)
 
     def __init__(self, note: dict, parent=None):
         super().__init__(parent)
@@ -39,9 +40,12 @@ class NoteCard(QFrame):
         self.selection_mode = False
         self.is_selected = False
         self.is_focused = False
-        
+        self.is_drop_target = False
+        self._drag_start_pos = None
+
         self.setFixedSize(220, 200)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setAcceptDrops(True)
         self.setObjectName("NoteCardFrame")
 
         # Soft shadow for card elevation
@@ -182,7 +186,9 @@ class NoteCard(QFrame):
             border_color = "rgba(0, 0, 0, 0.14)"
             menu_hover = "rgba(0, 0, 0, 0.08)"
         
-        if self.is_selected:
+        if self.is_drop_target:
+            border_style = "3px solid #2563EB"
+        elif self.is_selected:
             border_style = "2.5px solid #2563EB"
         elif self.is_focused:
             border_style = "2px dashed #2563EB"
@@ -294,6 +300,7 @@ class NoteCard(QFrame):
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.position().toPoint()
             modifiers = event.modifiers()
             shift_held = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
             ctrl_held = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
@@ -305,6 +312,50 @@ class NoteCard(QFrame):
             self._show_color_flyout(event.globalPosition().toPoint())
             return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if not (event.buttons() & Qt.MouseButton.LeftButton) or not self._drag_start_pos:
+            super().mouseMoveEvent(event)
+            return
+
+        if (event.position().toPoint() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+            super().mouseMoveEvent(event)
+            return
+
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData("application/x-stickynote-id", self.note_id.encode("utf-8"))
+        drag.setMimeData(mime)
+
+        pix = self.grab()
+        scaled_pix = pix.scaled(170, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        drag.setPixmap(scaled_pix)
+        drag.setHotSpot(QPoint(scaled_pix.width() // 2, scaled_pix.height() // 2))
+
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat("application/x-stickynote-id"):
+            raw = event.mimeData().data("application/x-stickynote-id")
+            source_id = bytes(raw).decode("utf-8")
+            if source_id != self.note_id:
+                event.acceptProposedAction()
+                self.is_drop_target = True
+                self._apply_style()
+
+    def dragLeaveEvent(self, event):
+        self.is_drop_target = False
+        self._apply_style()
+
+    def dropEvent(self, event):
+        self.is_drop_target = False
+        self._apply_style()
+        if event.mimeData().hasFormat("application/x-stickynote-id"):
+            raw = event.mimeData().data("application/x-stickynote-id")
+            source_id = bytes(raw).decode("utf-8")
+            if source_id != self.note_id:
+                event.acceptProposedAction()
+                self.create_stack_requested.emit(source_id, self.note_id)
 
     def _on_menu_btn_clicked(self):
         """Opens quick action context menu right beneath the ⋯ button."""

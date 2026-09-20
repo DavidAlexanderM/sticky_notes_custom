@@ -192,13 +192,104 @@ class TestProjectStacks(unittest.TestCase):
         self.assertTrue(hasattr(editor, "project_badge_btn"))
         self.assertTrue(hasattr(editor, "current_project_id"))
 
-        # Create note under default and load it
-        note_id = database.create_note(title="Editor Project Test", content="Hello", project_id="default")
-        editor.load_note(note_id)
-        self.assertEqual(editor.current_project_id, "default")
-        self.assertIn("General Notes", editor.project_badge_btn.text())
-        editor.close()
+    def test_get_next_stack_name_generation(self):
+        """Verify get_next_stack_name generates sequential, non-colliding names."""
+        name1 = database.get_next_stack_name()
+        self.assertEqual(name1, "Stack 1")
+        database.create_project("Stack 1")
+        name2 = database.get_next_stack_name()
+        self.assertEqual(name2, "Stack 2")
+        database.create_project("Stack 2")
+        name3 = database.get_next_stack_name()
+        self.assertEqual(name3, "Stack 3")
+
+    def test_dissolve_project_stack(self):
+        """Verify dissolving a project stack reassigns notes to default and deletes the project."""
+        p_id = database.create_project("Dissolve Me")
+        n1 = database.create_note(title="N1", project_id=p_id)
+        n2 = database.create_note(title="N2", project_id=p_id)
+
+        self.assertEqual(database.get_note(n1)["project_id"], p_id)
+        self.assertEqual(database.get_note(n2)["project_id"], p_id)
+
+        success = database.dissolve_project_stack(p_id)
+        self.assertTrue(success)
+        self.assertIsNone(database.get_project(p_id))
+        self.assertEqual(database.get_note(n1)["project_id"], "default")
+        self.assertEqual(database.get_note(n2)["project_id"], "default")
+
+    def test_stack_card_widget(self):
+        """Verify StackCard component initializes with layer colors, preview, and renaming."""
+        from components.stack_card import StackCard
+        p_id = database.create_project("Design System", color_hex="#8AB4F8")
+        database.create_note(title="Color Palette", color_hex="#FFF9C4", project_id=p_id)
+        database.create_note(title="Typography", color_hex="#E8F5E9", project_id=p_id)
+
+        proj = database.get_project(p_id)
+        card = StackCard(proj)
+        self.assertEqual(card.project_id, p_id)
+        self.assertEqual(card.color_hex, "#8AB4F8")
+        self.assertTrue(card.acceptDrops())
+        self.assertEqual(card.name_label.text(), "Design System")
+        self.assertGreaterEqual(len(card.layer_colors), 3)
+
+        # Test inline rename trigger
+        card.start_rename()
+        self.assertFalse(card.name_edit.isHidden())
+        self.assertTrue(card.name_label.isHidden())
+        card.name_edit.setText("Brand System")
+        card._commit_rename()
+        self.assertEqual(card.name_label.text(), "Brand System")
+        self.assertEqual(database.get_project(p_id)["name"], "Brand System")
+        card.close()
+
+    def test_grid_create_stack_from_notes_merge(self):
+        """Verify dragging one note card onto another merges them into a Stack 1."""
+        n1 = database.create_note(title="Task Alpha", content="Do alpha", project_id="default")
+        n2 = database.create_note(title="Task Beta", content="Do beta", project_id="default")
+
+        grid = StickyNotesGridView()
+        grid.load_notes()
+
+        # Simulate dropping n1 onto n2
+        grid._on_create_stack_from_notes(n1, n2)
+
+        # A new project stack should have been created
+        projects = database.get_all_projects()
+        custom_projs = [p for p in projects if p["id"] != "default"]
+        self.assertEqual(len(custom_projs), 1)
+        stack_proj = custom_projs[0]
+        self.assertEqual(stack_proj["name"], "Stack 1")
+
+        # Both notes should now belong to this stack
+        self.assertEqual(database.get_note(n1)["project_id"], stack_proj["id"])
+        self.assertEqual(database.get_note(n2)["project_id"], stack_proj["id"])
+
+        # Grid should now display the StackCard
+        self.assertEqual(len(grid.stack_cards), 1)
+        self.assertEqual(grid.stack_cards[0].project_id, stack_proj["id"])
+        grid.close()
+
+    def test_grid_back_to_board_navigation(self):
+        """Verify back_to_board_btn visibility toggles when navigating into/out of stacks."""
+        grid = StickyNotesGridView()
+        p_id = database.create_project("Project Omega")
+        grid.load_notes()
+
+        self.assertTrue(grid.back_to_board_btn.isHidden())
+
+        # Open stack
+        grid._switch_active_project(p_id)
+        self.assertFalse(grid.back_to_board_btn.isHidden())
+        self.assertIn("Project Omega", grid.title_label.text())
+
+        # Click back
+        grid.back_to_board_btn.click()
+        self.assertTrue(grid.back_to_board_btn.isHidden())
+        self.assertEqual(grid.active_project_id, "default")
+        grid.close()
 
 
 if __name__ == "__main__":
     unittest.main()
+

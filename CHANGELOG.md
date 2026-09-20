@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.3] - 2026-09-20
+
+### Added & Fixed
+- **Textless Minimalist Color Filter Swatch Pills:**
+  - Eliminated textual color labels from filter pills in Grid View, retaining purely visual, circular color dots (24x24 px).
+  - Implemented high-contrast active selection rings, hover borders, and rich tooltips indicating the color name and filter function.
+  - Dynamically updates pill borders and accent rings on light, dark, and sepia theme transitions.
+- **Physical 3D Note Stacks with Drag-and-Drop Organization (`StackCard`):**
+  - **Drag-to-Merge Note Stacks:** Users can drag free notes directly over each other to merge them into a project stack with automatic sequential naming (`Stack 1`, `Stack 2`, etc.).
+  - **Physical Paper 3D Visuals:** Implemented multi-layered paper cards with subtle rotational offsets (-3.8° and +3.2°), paper drop shadows, and true note color previews mirroring the actual colors of notes inside the stack.
+  - **In-Place Inline Renaming:** Users can rename stacks inline directly from the card by pressing `F2` or double-clicking the stack title.
+  - **Drag-to-Add Notes:** Dragging any note onto an existing `StackCard` highlights the target stack with a glowing border and adds the note to the stack.
+  - **Stack Navigation & Breadcrumb:** Double-clicking a `StackCard` opens that stack's collection view with a dedicated `← Back to Board` button in the header.
+  - **Stack Dissolving:** Added "Unstack All Notes (Dissolve)" in the stack menu to unpack all grouped notes back into individual free notes on the board.
+
 ## [1.6.2] - 2026-09-20
 
 ### Added & Fixed

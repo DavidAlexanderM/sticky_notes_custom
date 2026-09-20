@@ -142,8 +142,10 @@ def get_project(project_id: str) -> Optional[Dict[str, Any]]:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-def create_project(name: str, color_hex: str = "#8AB4F8", icon: str = "folder") -> str:
+def create_project(name: str, color_hex: str = "#8AB4F8", icon: str = "folder", color: Optional[str] = None) -> str:
     """Creates a new project stack and returns its ID."""
+    if color is not None:
+        color_hex = color
     proj_id = str(uuid.uuid4())[:8]
     now = datetime.now().isoformat()
     with get_connection() as conn:
@@ -200,6 +202,39 @@ def move_notes_to_project(note_ids: List[str], target_project_id: str) -> None:
             [(target_project_id, now, nid) for nid in note_ids]
         )
         conn.commit()
+
+def get_next_stack_name() -> str:
+    """Returns the next default stack name, e.g. 'Stack 1', 'Stack 2', avoiding conflicts."""
+    projects = get_all_projects()
+    names = {p["name"].strip().lower() for p in projects}
+    idx = 1
+    while f"stack {idx}" in names:
+        idx += 1
+    return f"Stack {idx}"
+
+def get_project_note_colors(project_id: str, limit: int = 3) -> List[str]:
+    """Returns the background colors of the most recent notes in a project stack."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT color_hex FROM notes WHERE project_id = ? ORDER BY updated_at DESC LIMIT ?",
+            (project_id, limit)
+        )
+        return [row["color_hex"] for row in cursor.fetchall() if row["color_hex"]]
+
+def get_project_notes_preview(project_id: str, limit: int = 3) -> List[Dict[str, Any]]:
+    """Returns title and preview info of recent notes in a project stack."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, title, content, color_hex FROM notes WHERE project_id = ? ORDER BY updated_at DESC LIMIT ?",
+            (project_id, limit)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+def dissolve_project_stack(project_id: str) -> bool:
+    """Reassigns all notes in project to 'default' (free notes) and deletes the project."""
+    return delete_project(project_id, reassign_to_id="default")
 
 def get_active_project_id() -> str:
     """Retrieves last active project ID from user preferences."""

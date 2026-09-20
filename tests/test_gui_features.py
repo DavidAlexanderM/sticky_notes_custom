@@ -273,7 +273,10 @@ def test():
             hex_val = c["hex"]
             self.assertIn(hex_val, grid.pill_buttons)
             btn = grid.pill_buttons[hex_val]
-            self.assertFalse(btn.icon().isNull(), f"Color pill for {c['name']} must have an icon")
+            self.assertEqual(btn.text(), "", f"Color pill for {c['name']} must have no text label")
+            self.assertEqual(btn.objectName(), "ColorDotPill")
+            self.assertEqual(btn.width(), 24)
+            self.assertEqual(btn.height(), 24)
 
         self.assertIsNotNone(grid.sort_combo)
         self.assertEqual(grid.sort_combo.count(), 5)

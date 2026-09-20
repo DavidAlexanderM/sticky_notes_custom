@@ -16,19 +16,21 @@ import markdown2
 
 try:
     from ..components.note_card import NoteCard
+    from ..components.stack_card import StackCard
     from ..components.help_dialog import HelpAboutDialog
     from ..components.share_dialog import ShareNoteDialog
     from ..components.project_dialog import NewProjectDialog, ManageProjectsDialog
-    from ..styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
+    from ..styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS, THEME_PALETTES
     from ..theme_manager import get_theme_manager
     from ..icons import get_themed_icon, render_note_stack_icon
     from .. import database
 except ImportError:
     from components.note_card import NoteCard
+    from components.stack_card import StackCard
     from components.help_dialog import HelpAboutDialog
     from components.share_dialog import ShareNoteDialog
     from components.project_dialog import NewProjectDialog, ManageProjectsDialog
-    from styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS
+    from styles import NOTE_COLORS, MARKDOWN_PREVIEW_CSS, THEME_PALETTES
     from theme_manager import get_theme_manager
     from icons import get_themed_icon, render_note_stack_icon
     import database
@@ -63,6 +65,7 @@ class StickyNotesGridView(QWidget):
         self.active_project_id = database.get_active_project_id()
         self.all_notes: List[dict] = []
         self.note_cards: List[NoteCard] = []
+        self.stack_cards: List[StackCard] = []
         self.selected_note_ids: Set[str] = set()
         self.current_color_filter: Optional[str] = None
         self.anchor_card_index: int = -1
@@ -80,6 +83,15 @@ class StickyNotesGridView(QWidget):
         self.title_label = QLabel("My Notes", self)
         self.title_label.setObjectName("AppHeaderTitle")
         self.header_layout.addWidget(self.title_label)
+
+        # Back to Board Button (visible when inside a stack)
+        self.back_to_board_btn = QPushButton("← Back to Board", self)
+        self.back_to_board_btn.setObjectName("BackToBoardBtn")
+        self.back_to_board_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.back_to_board_btn.setToolTip("Return to main board showing all stacks and free notes")
+        self.back_to_board_btn.clicked.connect(lambda: self._switch_active_project("default"))
+        self.back_to_board_btn.setVisible(False)
+        self.header_layout.addWidget(self.back_to_board_btn)
 
         # Project Stack Switcher Button
         self.project_btn = QPushButton(self)
@@ -132,13 +144,14 @@ class StickyNotesGridView(QWidget):
 
         # Color Filter Chips & Sort Selector Bar
         chips_layout = QHBoxLayout()
-        chips_layout.setSpacing(6)
+        chips_layout.setSpacing(8)
         chips_layout.setContentsMargins(0, 0, 0, 0)
 
         self.pill_buttons = {}
-        all_pill = QPushButton(" All Notes", self)
+        all_pill = QPushButton("All", self)
         all_pill.setObjectName("FilterPill")
         all_pill.setProperty("active", True)
+        all_pill.setToolTip("Show notes of all colors")
         all_pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         all_pill.clicked.connect(lambda: self._set_color_filter(None))
         chips_layout.addWidget(all_pill)
@@ -146,16 +159,17 @@ class StickyNotesGridView(QWidget):
 
         for c in NOTE_COLORS:
             hex_val = c["hex"]
-            display_name = c["name"].replace("Soft ", "").replace("Light ", "").replace("Pale ", "").replace("Muted ", "")
-            pill = QPushButton(f" {display_name}", self)
-            pill.setObjectName("FilterPill")
+            pill = QPushButton(self)
+            pill.setObjectName("ColorDotPill")
             pill.setProperty("active", False)
-            pill.setIcon(create_color_swatch_icon(hex_val, 13))
-            pill.setToolTip(f"Filter notes by color: {c['name']}")
+            pill.setFixedSize(24, 24)
+            pill.setToolTip(f"{c['name']} notes")
             pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             pill.clicked.connect(lambda _, h=hex_val: self._set_color_filter(h))
             chips_layout.addWidget(pill)
             self.pill_buttons[hex_val] = pill
+
+        self._update_pill_styles()
 
         chips_layout.addStretch()
 
@@ -313,12 +327,16 @@ class StickyNotesGridView(QWidget):
         self._update_project_button_label()
 
     def _update_project_button_label(self):
-        """Updates the Project Switcher button label and styling based on active stack."""
+        """Updates the Project Switcher button label, back button, and header title based on active stack."""
         theme = self.theme_mgr.current_theme
         projects = database.get_all_projects()
         all_count = sum(p.get("note_count", 0) for p in projects)
         
+        is_in_stack = self.active_project_id not in ("all", "default")
+        self.back_to_board_btn.setVisible(is_in_stack)
+
         if self.active_project_id == "all":
+            self.title_label.setText("My Notes")
             self.project_btn.setText(f" All Notes ({all_count}) ▾")
             self.project_btn.setIcon(get_themed_icon("layers", role="btn_text", theme=theme, size=16))
             self.project_btn.setToolTip("Active Collection: All Notes\nClick to switch project stack")
@@ -330,13 +348,23 @@ class StickyNotesGridView(QWidget):
             self.active_project_id = "default"
             database.set_active_project_id("default")
             active_proj = next((p for p in projects if p["id"] == "default"), None)
+            self.back_to_board_btn.setVisible(False)
 
-        name = active_proj["name"] if active_proj else "General Notes"
-        count = active_proj.get("note_count", 0) if active_proj else 0
-        p_color = active_proj.get("color", "#F9AB00") if active_proj else "#F9AB00"
-        self.project_btn.setText(f" {name} ({count}) ▾")
-        self.project_btn.setIcon(render_note_stack_icon(p_color, size=18))
-        self.project_btn.setToolTip(f"Active Stack: {name}\nClick to switch project stack")
+        if self.active_project_id == "default":
+            self.title_label.setText("My Notes")
+            count = active_proj.get("note_count", 0) if active_proj else 0
+            self.project_btn.setText(f" Free Notes ({count}) ▾")
+            p_color = active_proj.get("color", "#F9AB00") if active_proj else "#F9AB00"
+            self.project_btn.setIcon(render_note_stack_icon(p_color, size=18))
+            self.project_btn.setToolTip("Active Collection: Free Notes\nClick to switch project stack")
+        else:
+            name = active_proj["name"] if active_proj else "Stack"
+            count = active_proj.get("note_count", 0) if active_proj else 0
+            p_color = active_proj.get("color", "#F9AB00") if active_proj else "#F9AB00"
+            self.title_label.setText(f"📚 {name}")
+            self.project_btn.setText(f" {name} ({count}) ▾")
+            self.project_btn.setIcon(render_note_stack_icon(p_color, size=18))
+            self.project_btn.setToolTip(f"Active Stack: {name}\nClick to switch project stack")
 
     def _show_project_menu(self):
         """Displays dropdown menu listing all project stacks with note counts and management options."""
@@ -515,15 +543,52 @@ class StickyNotesGridView(QWidget):
 
     def _on_theme_changed(self, new_theme: str):
         self._update_theme_btn_label()
+        self._update_pill_styles()
         for card in self.note_cards:
             card._apply_style()
+        for sc in self.stack_cards:
+            sc._apply_style()
+
+    def _update_pill_styles(self):
+        """Updates circular color swatches and active ring based on current theme."""
+        theme = self.theme_mgr.current_theme
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+        accent = pal.get("accent", "#2563EB")
+        is_dark = self.theme_mgr.is_dark_mode()
+        default_border = "rgba(255, 255, 255, 0.30)" if is_dark else "rgba(0, 0, 0, 0.18)"
+
+        for hex_val, btn in self.pill_buttons.items():
+            if hex_val is None:
+                is_active = (self.current_color_filter is None)
+                btn.setProperty("active", is_active)
+                btn.style().unpolish(btn)
+                btn.style().polish(btn)
+            else:
+                is_active = (self.current_color_filter == hex_val)
+                btn.setProperty("active", is_active)
+                if is_active:
+                    btn.setStyleSheet(f"""
+                        QPushButton#ColorDotPill {{
+                            background-color: {hex_val};
+                            border: 3px solid {accent};
+                            border-radius: 12px;
+                        }}
+                    """)
+                else:
+                    btn.setStyleSheet(f"""
+                        QPushButton#ColorDotPill {{
+                            background-color: {hex_val};
+                            border: 1.5px solid {default_border};
+                            border-radius: 12px;
+                        }}
+                        QPushButton#ColorDotPill:hover {{
+                            border: 2.5px solid {accent};
+                        }}
+                    """)
 
     def _set_color_filter(self, hex_val):
         self.current_color_filter = hex_val
-        for key, btn in self.pill_buttons.items():
-            btn.setProperty("active", key == hex_val)
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
+        self._update_pill_styles()
         self._filter_and_render_notes()
 
     def _on_sort_changed(self, index: int):
@@ -543,18 +608,22 @@ class StickyNotesGridView(QWidget):
 
     def load_notes(self):
         """Reloads notes from database and refreshes view."""
-        self.all_notes = database.get_all_notes(self.active_project_id)
+        if self.active_project_id in ("all", "default"):
+            self.all_notes = database.get_all_notes("all")
+        else:
+            self.all_notes = database.get_all_notes(self.active_project_id)
         self._update_project_button_label()
         self._filter_and_render_notes()
 
     def _filter_and_render_notes(self):
-        """Filters notes based on search query and color chip, then renders grid."""
+        """Filters notes and stacks based on search query and color, then renders grid."""
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
         self.note_cards.clear()
+        self.stack_cards.clear()
         self.selected_note_ids.clear()
         self.anchor_card_index = -1
         self.focused_card_index = -1
@@ -562,8 +631,29 @@ class StickyNotesGridView(QWidget):
 
         search_query = self.search_input.text().strip().lower()
 
-        filtered = []
-        for note in self.all_notes:
+        filtered_projects = []
+        if self.active_project_id in ("all", "default"):
+            projects = database.get_all_projects()
+            custom_projects = [p for p in projects if p["id"] != "default"]
+            for p in custom_projects:
+                if self.current_color_filter:
+                    p_colors = database.get_project_note_colors(p["id"])
+                    if p.get("color") != self.current_color_filter and self.current_color_filter not in p_colors:
+                        continue
+                if search_query:
+                    p_name_match = search_query in p["name"].lower()
+                    preview_notes = database.get_project_notes_preview(p["id"], limit=10)
+                    note_match = any(search_query in (n.get("title") or "").lower() for n in preview_notes)
+                    if not (p_name_match or note_match):
+                        continue
+                filtered_projects.append(p)
+
+        filtered_notes = []
+        notes_source = self.all_notes
+        if self.active_project_id in ("all", "default"):
+            notes_source = [n for n in self.all_notes if n.get("project_id", "default") == "default"]
+
+        for note in notes_source:
             if self.current_color_filter and note.get("color_hex") != self.current_color_filter:
                 continue
             if search_query:
@@ -571,10 +661,10 @@ class StickyNotesGridView(QWidget):
                 content_match = search_query in note.get("content", "").lower()
                 if not (title_match or content_match):
                     continue
-            filtered.append(note)
+            filtered_notes.append(note)
 
         # Empty state handling
-        if not filtered:
+        if not filtered_projects and not filtered_notes:
             empty_frame = QFrame(self.grid_content)
             empty_frame.setObjectName("EmptyStateCard")
             empty_layout = QVBoxLayout(empty_frame)
@@ -584,7 +674,7 @@ class StickyNotesGridView(QWidget):
             if search_query or self.current_color_filter:
                 icon_lbl = QLabel("🔍", empty_frame)
                 icon_lbl.setStyleSheet("font-size: 32px;")
-                title_lbl = QLabel("No notes matched your search.", empty_frame)
+                title_lbl = QLabel("No notes or stacks matched your search.", empty_frame)
                 title_lbl.setObjectName("EmptyStateTitle")
                 btn_clear = QPushButton("Clear Filter", empty_frame)
                 btn_clear.setObjectName("SelectModeButton")
@@ -594,12 +684,20 @@ class StickyNotesGridView(QWidget):
                 empty_layout.addWidget(title_lbl, 0, Qt.AlignmentFlag.AlignCenter)
                 empty_layout.addWidget(btn_clear, 0, Qt.AlignmentFlag.AlignCenter)
             else:
-                icon_lbl = QLabel("📝", empty_frame)
-                icon_lbl.setStyleSheet("font-size: 36px;")
-                title_lbl = QLabel("No notes yet.", empty_frame)
-                title_lbl.setObjectName("EmptyStateTitle")
-                sub_lbl = QLabel("Click '+ New Note' to create your first sticky note!", empty_frame)
-                sub_lbl.setObjectName("EmptyStateSubtitle")
+                if self.active_project_id not in ("all", "default"):
+                    icon_lbl = QLabel("📚", empty_frame)
+                    icon_lbl.setStyleSheet("font-size: 36px;")
+                    title_lbl = QLabel("This stack is currently empty.", empty_frame)
+                    title_lbl.setObjectName("EmptyStateTitle")
+                    sub_lbl = QLabel("Click '+ New Note' or drag notes into this stack from the main board!", empty_frame)
+                    sub_lbl.setObjectName("EmptyStateSubtitle")
+                else:
+                    icon_lbl = QLabel("📝", empty_frame)
+                    icon_lbl.setStyleSheet("font-size: 36px;")
+                    title_lbl = QLabel("No notes yet.", empty_frame)
+                    title_lbl.setObjectName("EmptyStateTitle")
+                    sub_lbl = QLabel("Click '+ New Note' to create a note, or drag notes over each other to form a stack!", empty_frame)
+                    sub_lbl.setObjectName("EmptyStateSubtitle")
                 empty_layout.addWidget(icon_lbl, 0, Qt.AlignmentFlag.AlignCenter)
                 empty_layout.addWidget(title_lbl, 0, Qt.AlignmentFlag.AlignCenter)
                 empty_layout.addWidget(sub_lbl, 0, Qt.AlignmentFlag.AlignCenter)
@@ -608,10 +706,27 @@ class StickyNotesGridView(QWidget):
             return
 
         cols = max(1, self.width() // 250) if self.width() > 0 else 3
+        current_idx = 0
 
-        for index, note in enumerate(filtered):
-            row = index // cols
-            col = index % cols
+        # Render Stacks (when at root board)
+        for project in filtered_projects:
+            row = current_idx // cols
+            col = current_idx % cols
+            sc = StackCard(project, self.grid_content)
+            sc.open_stack_requested.connect(self._switch_active_project)
+            sc.note_dropped_into_stack.connect(self._on_note_dropped_into_stack)
+            sc.dissolve_requested.connect(self._on_stack_dissolved)
+            sc.delete_requested.connect(self._on_stack_deleted)
+            sc.color_changed.connect(lambda pid, c: self.load_notes())
+            sc.renamed.connect(lambda pid, n: self._update_project_button_label())
+            self.grid_layout.addWidget(sc, row, col)
+            self.stack_cards.append(sc)
+            current_idx += 1
+
+        # Render Notes
+        for note in filtered_notes:
+            row = current_idx // cols
+            col = current_idx % cols
             
             card = NoteCard(note, self.grid_content)
             card.double_clicked.connect(self._on_card_double_clicked)
@@ -622,9 +737,11 @@ class StickyNotesGridView(QWidget):
             card.delete_requested.connect(self._on_card_delete_requested)
             card.selection_toggled.connect(self._on_card_selection_toggled)
             card.move_to_project_requested.connect(self._on_card_move_to_project)
+            card.create_stack_requested.connect(self._on_create_stack_from_notes)
             
             self.grid_layout.addWidget(card, row, col)
             self.note_cards.append(card)
+            current_idx += 1
 
     def _clear_filters(self):
         self.search_input.clear()
@@ -813,7 +930,7 @@ class StickyNotesGridView(QWidget):
     def _create_new_note(self):
         """Creates an untitled note and immediately switches to edit mode."""
         initial_color = self.current_color_filter or "#FFF9C4"
-        pid = self.active_project_id if self.active_project_id != "all" else "default"
+        pid = self.active_project_id if self.active_project_id not in ("all", "default") else "default"
         note_id = database.create_note(title="Untitled Note", content="", color_hex=initial_color, project_id=pid)
         self.open_note_requested.emit(note_id)
 
@@ -853,6 +970,28 @@ class StickyNotesGridView(QWidget):
         if confirm == QMessageBox.StandardButton.Yes:
             database.delete_note(note_id)
             self.load_notes()
+
+    def _on_create_stack_from_notes(self, source_note_id: str, target_note_id: str):
+        """Merges two notes into a new project stack when dragged onto each other."""
+        stack_name = database.get_next_stack_name()
+        target_note = database.get_note(target_note_id)
+        color = target_note.get("color_hex", "#FFF9C4") if target_note else "#FFF9C4"
+        new_pid = database.create_project(name=stack_name, color_hex=color)
+        database.move_notes_to_project([source_note_id, target_note_id], new_pid)
+        self.load_notes()
+
+    def _on_note_dropped_into_stack(self, note_id: str, project_id: str):
+        """Called when a note is dropped onto an existing stack card."""
+        database.move_notes_to_project([note_id], project_id)
+        self.load_notes()
+
+    def _on_stack_dissolved(self, project_id: str):
+        """Called when a stack card is dissolved via its menu."""
+        self.load_notes()
+
+    def _on_stack_deleted(self, project_id: str):
+        """Called when a stack is deleted."""
+        self.load_notes()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

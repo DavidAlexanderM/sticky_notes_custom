@@ -337,6 +337,30 @@ QPushButton#FilterPill[active="true"] {{
     font-weight: 700;
 }}
 
+/* Circular Color Swatch Filter Dots */
+QPushButton#ColorDotPill {{
+    border-radius: 12px;
+    min-width: 24px;
+    max-width: 24px;
+    min-height: 24px;
+    max-height: 24px;
+}}
+
+/* Back to Board Navigation Button */
+QPushButton#BackToBoardBtn {{
+    background-color: {pal["btn_bg"]};
+    color: {pal["accent"]};
+    border: 1px solid {pal["accent"]};
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 700;
+}}
+
+QPushButton#BackToBoardBtn:hover {{
+    background-color: {pal["btn_hover"]};
+}}
+
 /* Sort Dropdown & Generic ComboBox */
 QComboBox#SortComboBox, QComboBox {{
     background-color: {pal["btn_bg"]};
