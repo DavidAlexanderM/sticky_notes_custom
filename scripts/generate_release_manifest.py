@@ -23,9 +23,16 @@ def generate_manifest(output_dir: Path = None, tag_name: str = None) -> Path:
     clean_ver = tag.lstrip("vV")
 
     dist_dir = PROJECT_ROOT / "dist"
-    zip_files = list(dist_dir.glob("*.zip"))
-    asset_name = zip_files[0].name if zip_files else f"StickyNotes_v{clean_ver}_Windows.zip"
-    asset_size = zip_files[0].stat().st_size if zip_files else 0
+    matching_zips = [f for f in dist_dir.glob("*.zip") if clean_ver in f.name]
+    target_zip = matching_zips[0] if matching_zips else None
+    asset_name = target_zip.name if target_zip else f"StickyNotes_v{clean_ver}_Windows.zip"
+    asset_size = target_zip.stat().st_size if target_zip else 0
+
+    # Look for installer exe
+    matching_exes = [f for f in dist_dir.glob("*.exe") if "setup" in f.name.lower()]
+    target_exe = matching_exes[0] if matching_exes else None
+    installer_name = target_exe.name if target_exe else f"StickyNotes_Setup_v{clean_ver}.exe"
+    installer_size = target_exe.stat().st_size if target_exe else 0
 
     manifest = {
         "version": clean_ver,
@@ -35,7 +42,10 @@ def generate_manifest(output_dir: Path = None, tag_name: str = None) -> Path:
         "body": f"Sticky Notes {tag} release for Windows.",
         "asset_name": asset_name,
         "asset_size": asset_size,
-        "browser_download_url": f"https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/{tag}/{asset_name}"
+        "browser_download_url": f"https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/{tag}/{asset_name}",
+        "installer_name": installer_name,
+        "installer_size": installer_size,
+        "installer_url": f"https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/{tag}/{installer_name}"
     }
 
     out_file = output_dir / "version.json"

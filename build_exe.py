@@ -20,6 +20,15 @@ def build():
         if d.exists():
             shutil.rmtree(d, ignore_errors=True)
 
+    # Ensure app icon is generated
+    icon_path = project_dir / "assets" / "icon.ico"
+    if not icon_path.exists():
+        try:
+            from scripts.generate_app_icon import create_sticky_icon
+            create_sticky_icon()
+        except Exception:
+            pass
+
     # PyInstaller command arguments
     cmd = [
         sys.executable, "-m", "PyInstaller",
@@ -30,8 +39,11 @@ def build():
         "--noconfirm",
         "--onedir",
         "--add-data", f"{project_dir / 'styles.py'};.",
-        str(project_dir / "main.py")
     ]
+    if icon_path.exists():
+        cmd.extend(["--icon", str(icon_path)])
+
+    cmd.append(str(project_dir / "main.py"))
 
     print("Running:", " ".join(cmd))
     result = subprocess.run(cmd, cwd=str(project_dir))

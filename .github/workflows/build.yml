@@ -39,21 +39,31 @@ jobs:
         run: |
           python scripts/verify_lifecycle.py
 
+      - name: Install Inno Setup Compiler
+        run: |
+          choco install innosetup --no-progress
+
       - name: Build Standalone Executable with PyInstaller
         run: |
           python build_exe.py
+
+      - name: Compile Windows Installer (.exe) with Inno Setup
+        run: |
+          $ver = if ("${{ github.ref_name }}") { "${{ github.ref_name }}".TrimStart("vV") } else { "1.5.6" }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" installer.iss
 
       - name: Generate Release Manifest for Mirror Feed
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: |
           python scripts/generate_release_manifest.py
 
-      - name: Upload Build Artifact (ZIP & Manifest)
+      - name: Upload Build Artifacts (ZIP, Installer EXE & Manifest)
         uses: actions/upload-artifact@v4
         with:
           name: StickyNotes-Windows-x64
           path: |
             dist/*.zip
+            dist/*.exe
             dist/version.json
           if-no-files-found: error
           retention-days: 30
@@ -64,6 +74,7 @@ jobs:
         with:
           files: |
             dist/*.zip
+            dist/*.exe
             dist/version.json
           generate_release_notes: true
 
@@ -77,6 +88,7 @@ jobs:
           token: ${{ secrets.RELEASE_MIRROR_TOKEN }}
           files: |
             dist/*.zip
+            dist/*.exe
             dist/version.json
           generate_release_notes: true
 

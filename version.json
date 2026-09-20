@@ -4,7 +4,10 @@
   "published_at": "latest",
   "html_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/tag/v1.5.6",
   "body": "Sticky Notes v1.5.6 release for Windows.",
-  "asset_name": "StickyNotes_v1.5.3_Windows.zip",
-  "asset_size": 77800752,
-  "browser_download_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.5.6/StickyNotes_v1.5.3_Windows.zip"
+  "asset_name": "StickyNotes_v1.5.6_Windows.zip",
+  "asset_size": 0,
+  "browser_download_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.5.6/StickyNotes_v1.5.6_Windows.zip",
+  "installer_name": "StickyNotes_Setup_v1.5.6.exe",
+  "installer_size": 0,
+  "installer_url": "https://github.com/DavidAlexanderM/sticky_notes_releases/releases/download/v1.5.6/StickyNotes_Setup_v1.5.6.exe"
 }
