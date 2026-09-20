@@ -77,6 +77,13 @@ class NoteCard(QFrame):
         self.snippet_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.snippet_label, 1)
 
+        # Media Badges row (Photos, Audio, Video indicators)
+        badges = self._get_media_badges(self.note.get("content", ""))
+        self.badge_label = QLabel(badges, self)
+        self.badge_label.setObjectName("CardBadges")
+        self.badge_label.setVisible(bool(badges))
+        layout.addWidget(self.badge_label)
+
         # Bottom row (timestamp + right click hint)
         bottom_row = QHBoxLayout()
         bottom_row.setContentsMargins(0, 0, 0, 0)
@@ -151,6 +158,11 @@ class NoteCard(QFrame):
                 line-height: 1.4;
                 background: transparent;
             }}
+            QLabel#CardBadges {{
+                font-size: 11px;
+                background: transparent;
+                padding-top: 2px;
+            }}
             QLabel#CardDate {{
                 color: {muted_color};
                 font-size: 10px;
@@ -158,6 +170,19 @@ class NoteCard(QFrame):
                 background: transparent;
             }}
         """)
+
+    def _get_media_badges(self, content: str) -> str:
+        """Returns visual indicator emojis for attached media types."""
+        if not content:
+            return ""
+        badges = []
+        if "![" in content or any(ext in content.lower() for ext in (".png)", ".jpg)", ".jpeg)", ".gif)", ".webp)")):
+            badges.append("📷 Photo")
+        if "Voice Note" in content or any(ext in content.lower() for ext in (".m4a)", ".mp3)", ".wav)")):
+            badges.append("🎵 Audio")
+        if "Watch Video" in content or any(ext in content.lower() for ext in (".mp4)", ".webm)", ".mkv)")):
+            badges.append("🎥 Video")
+        return "  •  ".join(badges)
 
     def _clean_excerpt(self, markdown_text: str) -> str:
         """Strip markdown syntax to create a clean excerpt."""

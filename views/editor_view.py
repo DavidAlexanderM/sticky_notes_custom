@@ -12,16 +12,18 @@ try:
     from ..components.format_toolbar import FormatToolbar
     from ..components.voice_recorder_dialog import VoiceRecorderDialog
     from ..media_manager import copy_to_attachments, get_attachments_dir
-    from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color
+    from ..styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from ..security import is_safe_url, sanitize_markdown_html
+    from ..theme_manager import get_theme_manager
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
     from components.format_toolbar import FormatToolbar
     from components.voice_recorder_dialog import VoiceRecorderDialog
     from media_manager import copy_to_attachments, get_attachments_dir
-    from styles import MARKDOWN_PREVIEW_CSS, is_dark_color
+    from styles import MARKDOWN_PREVIEW_CSS, is_dark_color, get_markdown_preview_css
     from security import is_safe_url, sanitize_markdown_html
+    from theme_manager import get_theme_manager
     import database
 
 class NoteEditorView(QWidget):
@@ -135,6 +137,19 @@ class NoteEditorView(QWidget):
         self.share_btn.clicked.connect(self._share_current_note)
         header_layout.addWidget(self.share_btn)
 
+        # Theme Switcher Button (☀️ / 🌙)
+        self.theme_mgr = get_theme_manager()
+        self.theme_btn = QPushButton(self)
+        self.theme_btn.setObjectName("ThemeToggleBtn")
+        self.theme_btn.setFixedSize(32, 30)
+        self.theme_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.theme_btn.setToolTip("Toggle Light / Dark Theme")
+        self.theme_btn.clicked.connect(self._toggle_theme)
+        self._update_theme_btn_label()
+        header_layout.addWidget(self.theme_btn)
+
+        self.theme_mgr.theme_changed.connect(self._on_theme_changed)
+
         main_layout.addLayout(header_layout)
 
         # Editor & Preview Splitter Area
@@ -236,8 +251,27 @@ class NoteEditorView(QWidget):
             extras=["fenced-code-blocks", "tables", "task_list", "strike"]
         )
         safe_html_body = sanitize_markdown_html(html_body)
-        full_html = f"<html><head>{MARKDOWN_PREVIEW_CSS}</head><body>{safe_html_body}</body></html>"
+        css = self.theme_mgr.get_markdown_css()
+        full_html = f"<html><head>{css}</head><body>{safe_html_body}</body></html>"
         self.preview.setHtml(full_html)
+
+    def _update_theme_btn_label(self):
+        """Updates editor theme button icon."""
+        if self.theme_mgr.is_dark_mode():
+            self.theme_btn.setText("☀️")
+        else:
+            self.theme_btn.setText("🌙")
+
+    def _toggle_theme(self):
+        self.theme_mgr.toggle_theme()
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(self.theme_mgr.get_app_stylesheet())
+
+    def _on_theme_changed(self, new_theme: str):
+        self._update_theme_btn_label()
+        if self.preview.isVisible():
+            self._render_markdown()
 
     def _auto_save(self):
         if not self.current_note_id:

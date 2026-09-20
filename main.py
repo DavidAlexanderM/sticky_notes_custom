@@ -17,14 +17,17 @@ try:
     from . import database
     from . import version
     from .styles import APP_STYLESHEET
+    from .theme_manager import get_theme_manager
     from .views.grid_view import StickyNotesGridView
     from .views.editor_view import NoteEditorView
 except ImportError:
     import database
     import version
     from styles import APP_STYLESHEET
+    from theme_manager import get_theme_manager
     from views.grid_view import StickyNotesGridView
     from views.editor_view import NoteEditorView
+
 
 class MainWindow(QMainWindow):
     """
@@ -33,8 +36,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(version.APP_TITLE)
-        self.resize(880, 640)
-        self.setMinimumSize(620, 460)
+        self.resize(920, 680)
+        self.setMinimumSize(640, 480)
 
         # Initialize Database
         database.init_db()
@@ -74,6 +77,7 @@ class MainWindow(QMainWindow):
         self.grid_view.load_notes()
         self.stacked_widget.setCurrentIndex(0)
 
+
 def main():
     # High-DPI support
     QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -83,17 +87,21 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Sticky Notes")
     
-    # Modern Segoe UI typography
-    font = QFont("Segoe UI", 10)
+    # Modern typography
+    font = QFont("Segoe UI Variable Text", 10)
+    font.setStyleHint(QFont.StyleHint.SansSerif)
     app.setFont(font)
     
-    # Apply stylesheet
-    app.setStyleSheet(APP_STYLESHEET)
+    # Initialize Theme Manager and apply active theme
+    theme_mgr = get_theme_manager()
+    app.setStyleSheet(theme_mgr.get_app_stylesheet())
+    theme_mgr.theme_changed.connect(lambda _: app.setStyleSheet(theme_mgr.get_app_stylesheet()))
 
     window = MainWindow()
     window.show()
 
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()

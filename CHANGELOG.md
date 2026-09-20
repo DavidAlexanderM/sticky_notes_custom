@@ -10,11 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Modern UI redesign with floating glassmorphism pill toolbar and media badges.
-- Real-time instant search bar and hashtag note categorization.
+- Hashtag note categorization and auto-complete in editor.
 - Multi-language UI localization and full Right-to-Left (RTL) layout switching.
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
+
+---
+
+## [1.4.0] - 2026-09-19
+
+### Added
+- **Centralized Theme Management System (`theme_manager.py`):**
+  - Instant runtime switching between **Light**, **Dark**, and **Sepia** themes.
+  - Persistent preference saving to `%LOCALAPPDATA%/StickyNotes/preferences.json`.
+  - Dynamic `theme_changed` Qt signal dispatching across open views.
+  - Theme-aware Markdown preview CSS with dark background (`#1E1E22`), light text (`#E4E4E7`), and adapted code blocks.
+- **One-Click Theme Switcher (☀️ / 🌙):**
+  - Integrated into both `StickyNotesGridView` and `NoteEditorView` headers for instant toggling.
+- **Real-Time Note Search Bar:**
+  - Fast, dynamic `QLineEdit#SearchInput` in Grid View filtering notes by title, markdown content, or snippet as the user types.
+- **Color Category Filter Chips:**
+  - Interactive filter pills (`All Notes`, `● Yellow`, `● Green`, `● Coral`, `● Lavender`, `● Sky Blue`, `● Peach`) for instant color categorization.
+- **Card Visual Enhancements (`components/note_card.py`):**
+  - Media indicator badges (📷 Photo, 🎵 Audio, 🎥 Video) displayed directly on note cards.
+  - Refined Fluent 12px rounded geometry, soft depth drop shadows, and hover elevation.
+- **Modern Empty State Cards (`QFrame#EmptyStateCard`):**
+  - Custom visual cards with helpful actions when search yields no matches or notes board is empty.
+- **Automated Theme Test Suite (`tests/test_theme_manager.py`):**
+  - Unit tests verifying theme switching, persistence roundtrip, stylesheet generation, and signal emission.
 
 ---
 

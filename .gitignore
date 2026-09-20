@@ -8,8 +8,9 @@ env/
 venv/
 .venv/
 
-# SQLite database (optional, un-comment if you want notes kept strictly local)
+# Local user config & database
 # notes.db
+preferences.json
 
 # PyInstaller builds
 dist/

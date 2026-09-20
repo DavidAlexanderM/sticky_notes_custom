@@ -220,3 +220,41 @@ flowchart TD
 4. **Markdown Preview HTML Sanitization:** Raw or generated HTML is processed through `sanitize_markdown_html()` to strip active `<script>` tags, malicious frames, embeds, and JavaScript event handlers (`onload`, `onerror`, `onclick`).
 5. **100% Parameterized SQLite Engine:** All database operations strictly use parameterized queries (`?` placeholders). Dynamic query building with f-strings is prohibited and enforced via pre-commit AST static analysis (`scripts/security_check.py`).
 
+---
+
+## 8. Theme Architecture & Design Tokens System
+
+Starting in **v1.4.0**, the application features a centralized, tokenized theme architecture decoupled from individual Qt widgets.
+
+```mermaid
+flowchart LR
+    TM[ThemeManager (Singleton)] -->|Stores Choice| Prefs[(preferences.json)]
+    TM -->|Signal: theme_changed| MW[MainWindow]
+    TM -->|Signal: theme_changed| GV[StickyNotesGridView]
+    TM -->|Signal: theme_changed| EV[NoteEditorView]
+    
+    subgraph Tokens [Design Tokens: styles.py]
+        LP[Light Palette]
+        DP[Dark Palette]
+        SP[Sepia Palette]
+    end
+    
+    TM --> Tokens
+    Tokens -->|QSS| AppStyle[app.setStyleSheet]
+    Tokens -->|CSS| MDPreview[Markdown Preview CSS]
+```
+
+### Key Components:
+1. **`theme_manager.py` (ThemeManager):**
+   - Singleton managing active theme state (`"light"`, `"dark"`, `"sepia"`).
+   - Emits `theme_changed = Signal(str)` to update all Qt widgets without application restart.
+   - Persists user preferences to `%LOCALAPPDATA%/StickyNotes/preferences.json`.
+2. **`styles.py` (Design Tokens):**
+   - Tokenized palettes defining background, surface, text, border, and accent colors for each theme.
+   - `generate_app_stylesheet(theme)` compiles standard QSS rules.
+   - `get_markdown_preview_css(theme)` generates dark/light HTML styles for `QTextBrowser`.
+3. **Interactive Search & Category Filtering:**
+   - Real-time `QLineEdit#SearchInput` filtering note cards dynamically by title and content.
+   - Filter chips for fast note categorization by color.
+
+

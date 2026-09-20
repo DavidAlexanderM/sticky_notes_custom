@@ -9,16 +9,17 @@ This document is the high-density operational specification for AI agents (Antig
 | File / Directory | Purpose | Key Classes / Functions |
 | :--- | :--- | :--- |
 | `main.py` | Single-window entry point & router | `MainWindow(QMainWindow)` |
-| `version.py` | Single source of truth for versioning | `__version__ = "1.3.0"`, `APP_TITLE` |
+| `version.py` | Single source of truth for versioning | `__version__ = "1.4.0"`, `APP_TITLE` |
+| `theme_manager.py` | Dynamic theme switcher & settings | `ThemeManager(QObject)`, `get_theme_manager()` |
 | `security.py` | Path traversal, URL, filetype & HTML sanitization | `is_safe_attachment()`, `is_safe_url()`, `sanitize_markdown_html()` |
 | `database.py` | SQLite persistence layer | `init_db()`, `create_note()`, `get_all_notes()`, `duplicate_note()`, `delete_multiple_notes()` |
-| `styles.py` | WinUI 3 Fluent QSS & Markdown CSS | `APP_STYLESHEET`, `MARKDOWN_PREVIEW_CSS`, `NOTE_COLORS` |
+| `styles.py` | WinUI 3 Fluent QSS & Markdown CSS | `generate_app_stylesheet()`, `get_markdown_preview_css()` |
 | `media_manager.py` | Attachments & audio capture layer | `get_attachments_dir()`, `copy_to_attachments()`, `VoiceRecorder`, `has_microphone()` |
 | `components/` | Reusable UI components | `NoteCard`, `ColorPickerFlyout`, `FormatToolbar`, `VoiceRecorderDialog` |
-| `views/` | Primary stacked views | `StickyNotesGridView` (Grid), `NoteEditorView` (Editor) |
-| `tests/` | Automated test suites | `test_compatibility_and_media.py`, `test_security.py` |
+| `views/` | Primary stacked views | `StickyNotesGridView` (Grid + Search), `NoteEditorView` (Editor) |
+| `tests/` | Automated test suites | `test_compatibility_and_media.py`, `test_security.py`, `test_theme_manager.py` |
 | `scripts/` | Agentic, security & lifecycle tooling | `verify_lifecycle.py`, `security_check.py`, `db_cli.py` |
-| `build_exe.py` | Standalone PyInstaller builder | `build()` -> `dist/StickyNotes_v1.3.0_Windows.zip` |
+| `build_exe.py` | Standalone PyInstaller builder | `build()` -> `dist/StickyNotes_v1.4.0_Windows.zip` |
 
 ---
 
