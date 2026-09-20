@@ -81,3 +81,18 @@ When implementing changes:
 3. Add a log entry in `CHANGELOG.md` under `[Unreleased]` or the version header following Keep a Changelog format.
 4. Verify tests pass with `python scripts/verify_lifecycle.py`.
 5. Format commit message using Conventional Commits (`feat(...)`, `fix(...)`, `docs(...)`).
+
+---
+
+## 5. Visual UI Verification & Internationalization Capture
+
+To capture fresh visual verification screenshots across themes, language states, and modal flyouts:
+```powershell
+python scripts/capture_tags_verification.py
+```
+
+### Verified Visual Artifacts:
+- `screenshot_tags_en.png`: Desktop board with Tag Side Panel in English.
+- `screenshot_tags_es.png`: Desktop board dynamically switched to Spanish (`🌐 ES`).
+- `screenshot_tag_flyout.png`: 1-click tag assignment flyout showing Custom Tags first.
+

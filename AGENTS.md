@@ -77,3 +77,19 @@ To conserve the model context window and minimize token consumption:
 * **Documentation-as-Code (DaC):** Every PR/commit modifying features or APIs **must** update `docs/ARCHITECTURE.md` and log an entry in `CHANGELOG.md`.
 * **Universal UTF-8:** Never hardcode ASCII-only assumptions. Support accents, CJK, and RTL scripts natively.
 * **Single Version Source:** Update version numbers strictly in `version.py`.
+
+---
+
+## 5. UI/UX & Platform Invariants
+
+* **Privacy vs. Personalization Invariant:**
+  - Remote repository names, git remotes, and release download URLs must remain generic (e.g. `sticky_notes_custom`, `sticky_notes_releases`) to preserve recipient privacy.
+  - Desktop application GUI, window titles, and metadata must explicitly maintain personalized branding ("Danielle's Sticky Notes").
+* **Custom Tags First Precedence:**
+  - In all tag presentation, side panel listings, and selection flyouts, **Custom Tags must strictly be ordered FIRST** at the top, followed by Predetermined / System Tags second.
+* **PySide6 Dynamic Layout Detachment:**
+  - When clearing and rebuilding dynamic `QLayout` items (e.g., tag side panels, flyouts, note cards), always detach the widget using `widget.setParent(None)` prior to `widget.deleteLater()`. This prevents visual text overlapping and deferred deletion ghosting.
+* **Theme Palette Safe Resolution:**
+  - Never query `THEME_PALETTES.get(theme_mgr.current_theme)` without a dark/light fallback. When the active theme is `"system"`, compute `fallback = THEME_PALETTES["dark" if is_dark else "light"]` to prevent falling back to light palette in dark mode.
+* **Canonical Predetermined Tag Localization:**
+  - Predetermined tags must maintain canonical keys in storage (`database.PREDETERMINED_TAGS[...]["default_name"]`) while presenting localized labels via `i18n.tr()`, ensuring note counts and filters match seamlessly across English and Spanish.
