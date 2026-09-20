@@ -35,7 +35,13 @@ class MainWindow(QMainWindow):
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(version.APP_TITLE)
+        self.setWindowTitle("")
+        
+        # Application & Window Icon
+        ico_path = APP_DIR / "assets" / "icon.ico"
+        if ico_path.exists():
+            self.setWindowIcon(QIcon(str(ico_path)))
+
         self.resize(920, 680)
         self.setMinimumSize(640, 480)
 
@@ -103,6 +109,9 @@ def main():
     
     app = QApplication(sys.argv)
     app.setApplicationName("Sticky Notes")
+    ico_path = APP_DIR / "assets" / "icon.ico"
+    if ico_path.exists():
+        app.setWindowIcon(QIcon(str(ico_path)))
     
     # Modern typography
     font = QFont("Segoe UI Variable Text", 10)

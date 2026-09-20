@@ -4,8 +4,9 @@ Features responsive multi-column note layout, color filter chips, live search,
 Shift/Ctrl multi-selection, keyboard navigation, and Help & About center.
 """
 
+from pathlib import Path
 from typing import Optional, List, Set
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QPointF
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QScrollArea, QGridLayout, 
@@ -49,6 +50,80 @@ def create_color_swatch_icon(color_hex: str, size: int = 14) -> QIcon:
     return QIcon(pix)
 
 
+class ColorDotPillButton(QPushButton):
+    """
+    High-DPI resolution-independent circular color swatch filter button.
+    Renders vector circles via QPainter with subpixel antialiasing to guarantee
+    razor-sharp edges without the pixelation of CSS border-radius.
+    """
+    def __init__(self, color_hex: str, color_name: str, parent=None):
+        super().__init__(parent)
+        self.color_hex = color_hex
+        self.color_name = color_name
+        self.is_active = False
+        self.setObjectName("ColorDotPill")
+        self.setFixedSize(24, 24)
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setToolTip(f"{color_name} notes")
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    def set_active(self, active: bool):
+        if self.is_active != active:
+            self.is_active = active
+            self.update()
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+        cx = self.width() / 2.0
+        cy = self.height() / 2.0
+        is_hovered = self.underMouse()
+
+        theme_mgr = get_theme_manager()
+        is_dark = theme_mgr.is_dark_mode()
+        pal = THEME_PALETTES.get(theme_mgr.current_theme, THEME_PALETTES["light"])
+        accent = QColor(pal.get("accent", "#2563EB"))
+
+        if self.is_active:
+            # Outer high-contrast accent ring + inner color fill
+            outer_pen = QPen(accent, 2.0)
+            painter.setPen(outer_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QPointF(cx, cy), 10.0, 10.0)
+
+            # Inner color circle
+            painter.setPen(QPen(QColor(0, 0, 0, 35 if not is_dark else 70), 0.8))
+            painter.setBrush(QBrush(QColor(self.color_hex)))
+            painter.drawEllipse(QPointF(cx, cy), 7.2, 7.2)
+
+        elif is_hovered:
+            # Hovered: Crisp accent border with full color fill
+            hover_pen = QPen(accent, 2.0)
+            painter.setPen(hover_pen)
+            painter.setBrush(QBrush(QColor(self.color_hex)))
+            painter.drawEllipse(QPointF(cx, cy), 9.2, 9.2)
+
+        else:
+            # Inactive: Crisp subtle perimeter border with full color fill
+            subtle_border = QColor(255, 255, 255, 75) if is_dark else QColor(0, 0, 0, 50)
+            painter.setPen(QPen(subtle_border, 1.2))
+            painter.setBrush(QBrush(QColor(self.color_hex)))
+            painter.drawEllipse(QPointF(cx, cy), 9.0, 9.0)
+
+        painter.end()
+
+
+
 class StickyNotesGridView(QWidget):
     """
     Main board displaying sticky notes in a responsive, filterable grid
@@ -80,8 +155,22 @@ class StickyNotesGridView(QWidget):
         self.header_layout = QHBoxLayout()
         self.header_layout.setSpacing(10)
 
-        self.title_label = QLabel("My Notes", self)
+        # Header Sticky Note App Icon
+        self.sticky_icon_label = QLabel(self)
+        self.sticky_icon_label.setObjectName("HeaderStickyIcon")
+        self.sticky_icon_label.setFixedSize(30, 30)
+        self.sticky_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sticky_icon_label.setToolTip("Sticky Notes")
+        ico_file = Path(__file__).resolve().parent.parent / "assets" / "icon.ico"
+        if ico_file.exists():
+            self.sticky_icon_label.setPixmap(QIcon(str(ico_file)).pixmap(26, 26))
+        else:
+            self.sticky_icon_label.setPixmap(render_note_stack_icon("#F9AB00", size=26).pixmap(26, 26))
+        self.header_layout.addWidget(self.sticky_icon_label)
+
+        self.title_label = QLabel("", self)
         self.title_label.setObjectName("AppHeaderTitle")
+        self.title_label.setVisible(False)
         self.header_layout.addWidget(self.title_label)
 
         # Back to Board Button (visible when inside a stack)
@@ -159,12 +248,7 @@ class StickyNotesGridView(QWidget):
 
         for c in NOTE_COLORS:
             hex_val = c["hex"]
-            pill = QPushButton(self)
-            pill.setObjectName("ColorDotPill")
-            pill.setProperty("active", False)
-            pill.setFixedSize(24, 24)
-            pill.setToolTip(f"{c['name']} notes")
-            pill.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            pill = ColorDotPillButton(hex_val, c["name"], self)
             pill.clicked.connect(lambda _, h=hex_val: self._set_color_filter(h))
             chips_layout.addWidget(pill)
             self.pill_buttons[hex_val] = pill
@@ -336,7 +420,8 @@ class StickyNotesGridView(QWidget):
         self.back_to_board_btn.setVisible(is_in_stack)
 
         if self.active_project_id == "all":
-            self.title_label.setText("My Notes")
+            self.title_label.setText("")
+            self.title_label.setVisible(False)
             self.project_btn.setText(f" All Notes ({all_count}) ▾")
             self.project_btn.setIcon(get_themed_icon("layers", role="btn_text", theme=theme, size=16))
             self.project_btn.setToolTip("Active Collection: All Notes\nClick to switch project stack")
@@ -351,7 +436,8 @@ class StickyNotesGridView(QWidget):
             self.back_to_board_btn.setVisible(False)
 
         if self.active_project_id == "default":
-            self.title_label.setText("My Notes")
+            self.title_label.setText("")
+            self.title_label.setVisible(False)
             count = active_proj.get("note_count", 0) if active_proj else 0
             self.project_btn.setText(f" Free Notes ({count}) ▾")
             p_color = active_proj.get("color", "#F9AB00") if active_proj else "#F9AB00"
@@ -362,6 +448,7 @@ class StickyNotesGridView(QWidget):
             count = active_proj.get("note_count", 0) if active_proj else 0
             p_color = active_proj.get("color", "#F9AB00") if active_proj else "#F9AB00"
             self.title_label.setText(f"📚 {name}")
+            self.title_label.setVisible(True)
             self.project_btn.setText(f" {name} ({count}) ▾")
             self.project_btn.setIcon(render_note_stack_icon(p_color, size=18))
             self.project_btn.setToolTip(f"Active Stack: {name}\nClick to switch project stack")
@@ -565,26 +652,11 @@ class StickyNotesGridView(QWidget):
                 btn.style().polish(btn)
             else:
                 is_active = (self.current_color_filter == hex_val)
-                btn.setProperty("active", is_active)
-                if is_active:
-                    btn.setStyleSheet(f"""
-                        QPushButton#ColorDotPill {{
-                            background-color: {hex_val};
-                            border: 3px solid {accent};
-                            border-radius: 12px;
-                        }}
-                    """)
+                if hasattr(btn, 'set_active'):
+                    btn.set_active(is_active)
                 else:
-                    btn.setStyleSheet(f"""
-                        QPushButton#ColorDotPill {{
-                            background-color: {hex_val};
-                            border: 1.5px solid {default_border};
-                            border-radius: 12px;
-                        }}
-                        QPushButton#ColorDotPill:hover {{
-                            border: 2.5px solid {accent};
-                        }}
-                    """)
+                    btn.setProperty("active", is_active)
+                    btn.update()
 
     def _set_color_filter(self, hex_val):
         self.current_color_filter = hex_val
