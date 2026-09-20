@@ -182,7 +182,7 @@ def test():
         mgr = get_theme_manager()
         mgr.set_theme("dark")
         flyout_dark = ColorPickerFlyout()
-        self.assertIn("#1E293B", flyout_dark.card.styleSheet())
+        self.assertIn("#1E1F20", flyout_dark.card.styleSheet())
         flyout_dark.close()
 
         mgr.set_theme("light")

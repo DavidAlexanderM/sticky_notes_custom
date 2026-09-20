@@ -72,8 +72,8 @@ class TestThemeManager(unittest.TestCase):
         self.assertIn("#FFFFFF", light_css)
 
         dark_css = get_markdown_preview_css("dark")
-        self.assertIn("#1E293B", dark_css)
-        self.assertIn("#F8FAFC", dark_css)
+        self.assertIn("#1E1F20", dark_css)
+        self.assertIn("#E3E3E3", dark_css)
 
 
 if __name__ == "__main__":

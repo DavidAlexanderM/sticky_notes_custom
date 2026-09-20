@@ -1,6 +1,7 @@
 """
 help_dialog.py - Comprehensive Help, Keyboard Shortcuts, and About Dialog for Sticky Notes.
 Provides in-app navigation guidance, markdown syntax reference, and diagnostic file paths.
+Theme-adaptive with full WCAG contrast and Antigravity 2.0 dark palette support.
 """
 
 from pathlib import Path
@@ -14,12 +15,14 @@ from PySide6.QtGui import QDesktopServices, QCursor, QFont
 
 try:
     from ..theme_manager import get_theme_manager
+    from ..styles import THEME_PALETTES
     from ..icons import get_themed_icon, get_icon
     from ..database import get_db_path
     from ..media_manager import get_attachments_dir
     from ..version import __version__, AUTHOR, LICENSE, HOMEPAGE
 except ImportError:
     from theme_manager import get_theme_manager
+    from styles import THEME_PALETTES
     from icons import get_themed_icon, get_icon
     from database import get_db_path
     from media_manager import get_attachments_dir
@@ -46,9 +49,7 @@ class HelpAboutDialog(QDialog):
 
         # Tab Widget
         self.tabs = QTabWidget(self)
-        self.tabs.addTab(self._create_shortcuts_tab(), "Keyboard Shortcuts")
-        self.tabs.addTab(self._create_markdown_tab(), "Markdown & Media")
-        self.tabs.addTab(self._create_about_tab(), "About & Storage")
+        self._populate_tabs()
         layout.addWidget(self.tabs, 1)
 
         # Bottom row (Close button)
@@ -66,8 +67,19 @@ class HelpAboutDialog(QDialog):
 
         self._update_tab_icons()
 
+    def _populate_tabs(self):
+        """Build or rebuild all 3 tabs with current theme colors."""
+        self.tabs.clear()
+        self.tabs.addTab(self._create_shortcuts_tab(), "Keyboard Shortcuts")
+        self.tabs.addTab(self._create_markdown_tab(), "Markdown & Media")
+        self.tabs.addTab(self._create_about_tab(), "About & Storage")
+
     def _create_shortcuts_tab(self) -> QWidget:
         """Tab 1: Visual Keyboard Shortcuts Cheatsheet."""
+        theme = self.theme_mgr.current_theme
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+        is_dark = self.theme_mgr.is_dark_mode()
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -78,7 +90,7 @@ class HelpAboutDialog(QDialog):
         layout.setSpacing(14)
 
         intro = QLabel("Navigate, select, and organize your sticky notes with fluid keyboard shortcuts:")
-        intro.setStyleSheet("font-weight: 600; font-size: 13px;")
+        intro.setStyleSheet(f"font-weight: 600; font-size: 13px; color: {pal['text_primary']};")
         layout.addWidget(intro)
 
         shortcuts = [
@@ -106,9 +118,43 @@ class HelpAboutDialog(QDialog):
             ])
         ]
 
+        if is_dark:
+            badge_style = """
+                background-color: rgba(138, 180, 248, 0.15);
+                color: #8AB4F8;
+                border: 1px solid rgba(138, 180, 248, 0.35);
+                border-radius: 5px;
+                padding: 3px 8px;
+                font-family: 'Cascadia Code', 'Consolas', monospace;
+                font-weight: 700;
+                font-size: 11px;
+            """
+        elif theme == "sepia":
+            badge_style = """
+                background-color: rgba(140, 90, 43, 0.12);
+                color: #8C5A2B;
+                border: 1px solid rgba(140, 90, 43, 0.35);
+                border-radius: 5px;
+                padding: 3px 8px;
+                font-family: 'Cascadia Code', 'Consolas', monospace;
+                font-weight: 700;
+                font-size: 11px;
+            """
+        else:
+            badge_style = """
+                background-color: rgba(37, 99, 235, 0.10);
+                color: #2563EB;
+                border: 1px solid rgba(37, 99, 235, 0.35);
+                border-radius: 5px;
+                padding: 3px 8px;
+                font-family: 'Cascadia Code', 'Consolas', monospace;
+                font-weight: 700;
+                font-size: 11px;
+            """
+
         for section_title, items in shortcuts:
             sec_lbl = QLabel(section_title)
-            sec_lbl.setStyleSheet("font-size: 13px; font-weight: 700; color: #2563EB; margin-top: 6px;")
+            sec_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {pal['accent']}; margin-top: 6px;")
             layout.addWidget(sec_lbl)
 
             grid = QGridLayout()
@@ -121,19 +167,10 @@ class HelpAboutDialog(QDialog):
                 badge.setProperty("class", "KbdBadge")
                 badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 badge.setMinimumWidth(130)
-                badge.setStyleSheet("""
-                    background-color: rgba(37, 99, 235, 0.10);
-                    color: #2563EB;
-                    border: 1px solid rgba(37, 99, 235, 0.35);
-                    border-radius: 5px;
-                    padding: 3px 8px;
-                    font-family: 'Cascadia Code', 'Consolas', monospace;
-                    font-weight: 700;
-                    font-size: 11px;
-                """)
+                badge.setStyleSheet(badge_style)
 
                 desc_lbl = QLabel(desc)
-                desc_lbl.setStyleSheet("font-size: 12px;")
+                desc_lbl.setStyleSheet(f"font-size: 12px; color: {pal['text_primary']};")
 
                 grid.addWidget(badge, row, 0, Qt.AlignmentFlag.AlignLeft)
                 grid.addWidget(desc_lbl, row, 1, Qt.AlignmentFlag.AlignLeft)
@@ -147,6 +184,9 @@ class HelpAboutDialog(QDialog):
 
     def _create_markdown_tab(self) -> QWidget:
         """Tab 2: Markdown & Media Attachments Guide."""
+        theme = self.theme_mgr.current_theme
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -167,15 +207,16 @@ class HelpAboutDialog(QDialog):
 
         for title, syntax, notes in sections:
             t_lbl = QLabel(title)
-            t_lbl.setStyleSheet("font-size: 13px; font-weight: 700; margin-top: 4px;")
+            t_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {pal['text_primary']}; margin-top: 4px;")
             layout.addWidget(t_lbl)
 
             syn_box = QLabel(syntax)
-            syn_box.setStyleSheet("""
-                background-color: rgba(0, 0, 0, 0.05);
-                border: 1px solid rgba(0, 0, 0, 0.10);
+            syn_box.setStyleSheet(f"""
+                background-color: {pal['bg_main']};
+                color: {pal['text_primary']};
+                border: 1px solid {pal['border']};
                 border-radius: 6px;
-                padding: 6px 10px;
+                padding: 8px 12px;
                 font-family: 'Cascadia Code', 'Consolas', monospace;
                 font-size: 11px;
             """)
@@ -183,7 +224,7 @@ class HelpAboutDialog(QDialog):
             layout.addWidget(syn_box)
 
             n_lbl = QLabel(notes)
-            n_lbl.setStyleSheet("font-size: 12px; color: #64748B; margin-bottom: 4px;")
+            n_lbl.setStyleSheet(f"font-size: 12px; color: {pal['text_secondary']}; margin-bottom: 4px;")
             n_lbl.setWordWrap(True)
             layout.addWidget(n_lbl)
 
@@ -193,38 +234,41 @@ class HelpAboutDialog(QDialog):
 
     def _create_about_tab(self) -> QWidget:
         """Tab 3: App metadata and storage directory paths."""
+        theme = self.theme_mgr.current_theme
+        pal = THEME_PALETTES.get(theme, THEME_PALETTES["light"])
+
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(14)
 
         title = QLabel(f"Sticky Notes v{__version__}")
-        title.setStyleSheet("font-size: 20px; font-weight: 800; color: #2563EB;")
+        title.setStyleSheet(f"font-size: 20px; font-weight: 800; color: {pal['accent']};")
         layout.addWidget(title)
 
         subtitle = QLabel("Minimal Single-Window Markdown Desktop App with Offline Local Storage.")
-        subtitle.setStyleSheet("font-size: 13px; font-weight: 500;")
+        subtitle.setStyleSheet(f"font-size: 13px; font-weight: 500; color: {pal['text_secondary']};")
         layout.addWidget(subtitle)
 
         info_box = QFrame()
-        info_box.setStyleSheet("""
-            QFrame {
-                background-color: rgba(0, 0, 0, 0.03);
-                border: 1px solid rgba(0, 0, 0, 0.08);
+        info_box.setStyleSheet(f"""
+            QFrame {{
+                background-color: {pal['bg_main']};
+                border: 1px solid {pal['border']};
                 border-radius: 8px;
-                padding: 10px;
-            }
+                padding: 12px;
+            }}
         """)
         info_layout = QVBoxLayout(info_box)
-        info_layout.setSpacing(6)
+        info_layout.setSpacing(8)
 
         db_path = str(get_db_path().resolve())
         attach_path = str(get_attachments_dir().resolve())
 
-        info_layout.addWidget(QLabel(f"<b>Author:</b> {AUTHOR}"))
-        info_layout.addWidget(QLabel(f"<b>License:</b> {LICENSE}"))
-        info_layout.addWidget(QLabel(f"<b>Database File:</b> <span style='font-family: monospace;'>{db_path}</span>"))
-        info_layout.addWidget(QLabel(f"<b>Attachments Folder:</b> <span style='font-family: monospace;'>{attach_path}</span>"))
+        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>Author:</b> {AUTHOR}</span>"))
+        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>License:</b> {LICENSE}</span>"))
+        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>Database File:</b> <span style='font-family: monospace;'>{db_path}</span></span>"))
+        info_layout.addWidget(QLabel(f"<span style='color: {pal['text_primary']};'><b>Attachments Folder:</b> <span style='font-family: monospace;'>{attach_path}</span></span>"))
         layout.addWidget(info_box)
 
         # Action buttons
@@ -232,14 +276,14 @@ class HelpAboutDialog(QDialog):
         btn_layout.setSpacing(10)
 
         open_folder_btn = QPushButton(" Open Attachments Folder", self)
-        open_folder_btn.setIcon(get_themed_icon("folder", role="btn_text", size=16))
+        open_folder_btn.setIcon(get_themed_icon("folder", role="btn_text", theme=theme, size=16))
         open_folder_btn.setObjectName("SelectModeButton")
         open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(attach_path)))
         btn_layout.addWidget(open_folder_btn)
 
         github_btn = QPushButton(" GitHub Repository", self)
-        github_btn.setIcon(get_themed_icon("external_link", role="btn_text", size=16))
+        github_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=theme, size=16))
         github_btn.setObjectName("SelectModeButton")
         github_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(HOMEPAGE)))
@@ -258,4 +302,8 @@ class HelpAboutDialog(QDialog):
         self.tabs.setTabIcon(2, get_themed_icon("info", role="primary", theme=theme, size=16))
 
     def _on_theme_changed(self, new_theme: str):
+        current_tab = self.tabs.currentIndex()
+        self._populate_tabs()
+        if current_tab >= 0:
+            self.tabs.setCurrentIndex(current_tab)
         self._update_tab_icons()

@@ -17,6 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.3] - 2026-09-20
+
+### Added & Improved
+- **Antigravity 2.0 Dark Palette Integration:**
+  - Upgraded the Dark theme canvas from saturated navy blue (`#0F172A`/`#1E293B`) to neutral carbon obsidian (`#131314` canvas, `#1E1F20` elevated container surface, `#444746` neutral outline border).
+  - Adopted Gemini electric light blue (`#8AB4F8`) for accents, links, and selected tab indicators, with contrasting dark navy label fill (`#041E49`).
+  - Added neutral high-contrast buttons (`#28292A` background, `#333537` hover, `#E3E3E3` bright white text).
+- **Comprehensive Help Dialog Contrast & Theming Fix:**
+  - Resolved dark-on-dark unreadable text in the Help & About dialog (`HelpAboutDialog`).
+  - Shortcut badges dynamically styled: light translucent Gemini blue background with `#8AB4F8` text and border in Dark theme.
+  - Markdown syntax blocks and about info container now utilize `#131314` background with `#444746` borders and `#E3E3E3` text.
+  - Dynamic re-theming support upon theme switch while the dialog is open.
+- **Voice Recorder & Dialog Contrast:**
+  - Upgraded `VoiceRecorderDialog` to inherit tokenized colors from active theme palette.
+  - Global `QDialog` and `QDialog QLabel` text color guarantee (`#E3E3E3` in Dark mode).
+
+---
+
 ## [1.5.2] - 2026-09-20
 
 ### Added

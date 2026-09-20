@@ -86,7 +86,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self.fmt_inline_code.setFontWeight(QFont.Weight.DemiBold)
         if self.current_theme == "dark":
             self.fmt_inline_code.setBackground(QColor(255, 255, 255, 30))
-            self.fmt_inline_code.setForeground(QColor("#38BDF8"))
+            self.fmt_inline_code.setForeground(accent_col)
         elif self.current_theme == "sepia":
             self.fmt_inline_code.setBackground(QColor(0, 0, 0, 20))
             self.fmt_inline_code.setForeground(QColor("#8C5A2B"))
@@ -99,7 +99,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self.fmt_code_block.setFontFamilies([code_font_family])
         if self.current_theme == "dark":
             self.fmt_code_block.setBackground(QColor(255, 255, 255, 18))
-            self.fmt_code_block.setForeground(QColor("#E2E8F0"))
+            self.fmt_code_block.setForeground(secondary_col)
         else:
             self.fmt_code_block.setBackground(QColor(0, 0, 0, 12))
             self.fmt_code_block.setForeground(QColor("#1E293B"))

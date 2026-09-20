@@ -325,12 +325,12 @@ class NoteCard(QFrame):
             pal = {}
             is_dark = False
 
-        menu_bg = pal.get("menu_bg", "#1E293B" if is_dark else "#FFFFFF")
-        border = pal.get("border", "#475569" if is_dark else "#CBD5E1")
-        text_color = pal.get("text_primary", "#F8FAFC" if is_dark else "#0F172A")
-        hover_bg = pal.get("btn_hover", "#334155" if is_dark else "#F1F5F9")
-        accent = pal.get("accent", "#38BDF8" if is_dark else "#2563EB")
-        sep_color = pal.get("border_subtle", "#334155" if is_dark else "#E2E8F0")
+        menu_bg = pal.get("menu_bg", "#1E1F20" if is_dark else "#FFFFFF")
+        border = pal.get("border", "#444746" if is_dark else "#CBD5E1")
+        text_color = pal.get("text_primary", "#E3E3E3" if is_dark else "#0F172A")
+        hover_bg = pal.get("btn_hover", "#333537" if is_dark else "#F1F5F9")
+        accent = pal.get("accent", "#8AB4F8" if is_dark else "#2563EB")
+        sep_color = pal.get("border_subtle", "#2D2E30" if is_dark else "#E2E8F0")
 
         menu.setStyleSheet(f"""
             QMenu {{

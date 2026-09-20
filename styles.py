@@ -13,7 +13,7 @@ NOTE_COLORS = [
     {"name": "Sky Blue",     "hex": "#BBDEFB", "dark": False, "border": "#64B5F6", "dark_hex": "#1B2C3F"},
     {"name": "Warm Peach",   "hex": "#FFE0B2", "dark": False, "border": "#FFB74D", "dark_hex": "#3D2B1A"},
     {"name": "Soft Pink",    "hex": "#F8BBD0", "dark": False, "border": "#F06292", "dark_hex": "#3C1D2A"},
-    {"name": "Slate Dark",   "hex": "#1E293B", "dark": True,  "border": "#475569", "dark_hex": "#1E293B"},
+    {"name": "Slate Dark",   "hex": "#1E1F20", "dark": True,  "border": "#444746", "dark_hex": "#1E1F20"},
 ]
 
 THEME_PALETTES: Dict[str, Dict[str, str]] = {
@@ -44,30 +44,30 @@ THEME_PALETTES: Dict[str, Dict[str, str]] = {
         "menu_bg": "#FFFFFF",
     },
     "dark": {
-        "bg_main": "#0F172A",              # Deep midnight slate canvas
-        "bg_surface": "#1E293B",
-        "bg_card": "#1E293B",
-        "text_primary": "#F8FAFC",         # Pure bright white text
-        "text_secondary": "#E2E8F0",       # Slate-200 - crystal clear legibility
-        "text_muted": "#CBD5E1",           # Slate-300
-        "border": "#475569",               # Slate-600 - sharp high-contrast border
-        "border_subtle": "#334155",
-        "accent": "#38BDF8",               # Sky-400
-        "accent_hover": "#0EA5E9",
-        "accent_pressed": "#0284C7",
-        "accent_text": "#0F172A",
-        "btn_bg": "#1E293B",
-        "btn_hover": "#334155",
-        "btn_text": "#F8FAFC",             # Pure bright white button label
-        "input_bg": "#1E293B",
-        "input_border": "#475569",
-        "pill_bg": "#1E293B",
-        "pill_text": "#F8FAFC",
-        "scrollbar_handle": "#475569",
-        "scrollbar_hover": "#64748B",
-        "action_bar_bg": "#1E293B",
-        "action_bar_border": "#475569",
-        "menu_bg": "#1E293B",
+        "bg_main": "#131314",              # Neutral carbon obsidian canvas
+        "bg_surface": "#1E1F20",           # Clean neutral elevated surface
+        "bg_card": "#1E1F20",
+        "text_primary": "#E3E3E3",         # Bright neutral white text
+        "text_secondary": "#C4C7C5",       # Soft legible gray
+        "text_muted": "#8E918F",           # Muted gray
+        "border": "#444746",               # Neutral outline border
+        "border_subtle": "#2D2E30",
+        "accent": "#8AB4F8",               # Google Gemini electric light blue
+        "accent_hover": "#A8C7FA",
+        "accent_pressed": "#669DF6",
+        "accent_text": "#041E49",          # Deep contrast text on accent fill
+        "btn_bg": "#28292A",
+        "btn_hover": "#333537",
+        "btn_text": "#E3E3E3",             # Pure bright white button label
+        "input_bg": "#1E1F20",
+        "input_border": "#444746",
+        "pill_bg": "#28292A",
+        "pill_text": "#E3E3E3",
+        "scrollbar_handle": "#444746",
+        "scrollbar_hover": "#5E5E5E",
+        "action_bar_bg": "#1E1F20",
+        "action_bar_border": "#444746",
+        "menu_bg": "#1E1F20",
     },
     "sepia": {
         "bg_main": "#F7F2E7",              # Warm parchment canvas
@@ -531,6 +531,16 @@ QTabBar::tab:hover:!selected {{
     color: {pal["text_primary"]};
 }}
 
+/* Dialogs, Flyouts & Modals */
+QDialog {{
+    background-color: {pal["bg_surface"]};
+    color: {pal["text_primary"]};
+}}
+
+QDialog QLabel {{
+    color: {pal["text_primary"]};
+}}
+
 /* Help Dialog Keyboard Badges */
 QLabel.KbdBadge {{
     background-color: {pal["btn_hover"]};
@@ -548,15 +558,15 @@ QLabel.KbdBadge {{
 def get_markdown_preview_css(theme: str = "light") -> str:
     """Generates theme-aware CSS for rendered Markdown preview."""
     if theme == "dark":
-        bg_body = "#1E293B"
-        text_body = "#F8FAFC"
+        bg_body = "#1E1F20"
+        text_body = "#E3E3E3"
         heading_color = "#FFFFFF"
-        code_bg = "rgba(255, 255, 255, 0.14)"
-        pre_bg = "#0F172A"
-        border_color = "#334155"
-        link_color = "#38BDF8"
-        quote_border = "#38BDF8"
-        quote_text = "#CBD5E1"
+        code_bg = "rgba(255, 255, 255, 0.12)"
+        pre_bg = "#131314"
+        border_color = "#444746"
+        link_color = "#8AB4F8"
+        quote_border = "#8AB4F8"
+        quote_text = "#C4C7C5"
     elif theme == "sepia":
         bg_body = "#FFFDF9"
         text_body = "#2D2319"

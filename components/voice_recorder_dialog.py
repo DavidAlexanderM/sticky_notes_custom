@@ -17,6 +17,13 @@ except ImportError:
         has_microphone, get_default_microphone_name
     )
 
+try:
+    from ..theme_manager import get_theme_manager
+    from ..styles import THEME_PALETTES
+except ImportError:
+    from theme_manager import get_theme_manager
+    from styles import THEME_PALETTES
+
 class VoiceRecorderDialog(QDialog):
     """
     Dialog for recording live audio from microphone or picking an audio file from disk.
@@ -28,6 +35,9 @@ class VoiceRecorderDialog(QDialog):
         self.setModal(True)
         self.result_audio_path = None
 
+        self.theme_mgr = get_theme_manager()
+        self.pal = THEME_PALETTES.get(self.theme_mgr.current_theme, THEME_PALETTES["light"])
+
         self.recorder = VoiceRecorder(self)
         self.recorder.duration_changed.connect(self._on_duration_changed)
 
@@ -37,12 +47,12 @@ class VoiceRecorderDialog(QDialog):
 
         # Header Title
         title_label = QLabel("Voice Note", self)
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1E293B;")
+        title_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {self.pal['text_primary']};")
         layout.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Timer Display
         self.timer_label = QLabel("00:00", self)
-        self.timer_label.setStyleSheet("font-size: 32px; font-weight: 700; color: #334155;")
+        self.timer_label.setStyleSheet(f"font-size: 32px; font-weight: 700; color: {self.pal['text_primary']};")
         layout.addWidget(self.timer_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Status Label & Microphone Detection
@@ -103,7 +113,7 @@ class VoiceRecorderDialog(QDialog):
         # Separator line
         sep = QFrame(self)
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: rgba(0, 0, 0, 0.08);")
+        sep.setStyleSheet(f"color: {self.pal['border']};")
         layout.addWidget(sep)
 
         # Bottom row: Attach Existing File & Cancel
@@ -112,17 +122,17 @@ class VoiceRecorderDialog(QDialog):
 
         self.choose_file_btn = QPushButton("📁 From File...", self)
         self.choose_file_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.choose_file_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid rgba(0, 0, 0, 0.15);
+        self.choose_file_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.pal['btn_bg']};
+                border: 1px solid {self.pal['border']};
                 border-radius: 6px;
                 padding: 6px 12px;
                 font-size: 12px;
                 font-weight: 600;
-                color: #334155;
-            }
-            QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }
+                color: {self.pal['btn_text']};
+            }}
+            QPushButton:hover {{ background-color: {self.pal['btn_hover']}; }}
         """)
         self.choose_file_btn.clicked.connect(self._choose_audio_file)
         bottom_row.addWidget(self.choose_file_btn)
@@ -131,7 +141,7 @@ class VoiceRecorderDialog(QDialog):
 
         self.cancel_btn = QPushButton("Cancel", self)
         self.cancel_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.cancel_btn.setStyleSheet("border: none; color: #64748B; font-weight: 600; padding: 6px 12px;")
+        self.cancel_btn.setStyleSheet(f"border: none; color: {self.pal['text_muted']}; font-weight: 600; padding: 6px 12px;")
         self.cancel_btn.clicked.connect(self._on_cancel)
         bottom_row.addWidget(self.cancel_btn)
 

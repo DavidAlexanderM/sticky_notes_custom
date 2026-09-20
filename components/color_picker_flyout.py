@@ -63,12 +63,12 @@ class ColorPickerFlyout(QFrame):
         self.card = QFrame(self)
         self.card.setObjectName("FlyoutCard")
         
-        card_bg = pal.get("bg_surface", "#1E293B" if is_dark else "#FFFFFF")
-        card_border = pal.get("border", "#475569" if is_dark else "#CBD5E1")
-        text_primary = pal.get("text_primary", "#F8FAFC" if is_dark else "#0F172A")
-        text_muted = pal.get("text_muted", "#94A3B8" if is_dark else "#64748B")
-        border_subtle = pal.get("border_subtle", "#334155" if is_dark else "#E2E8F0")
-        btn_hover = pal.get("btn_hover", "#334155" if is_dark else "#F1F5F9")
+        card_bg = pal.get("bg_surface", "#1E1F20" if is_dark else "#FFFFFF")
+        card_border = pal.get("border", "#444746" if is_dark else "#CBD5E1")
+        text_primary = pal.get("text_primary", "#E3E3E3" if is_dark else "#0F172A")
+        text_muted = pal.get("text_muted", "#8E918F" if is_dark else "#64748B")
+        border_subtle = pal.get("border_subtle", "#2D2E30" if is_dark else "#E2E8F0")
+        btn_hover = pal.get("btn_hover", "#333537" if is_dark else "#F1F5F9")
         del_hover = "rgba(220, 38, 38, 0.25)" if is_dark else "#FEE2E2"
 
         self.card.setStyleSheet(f"""
