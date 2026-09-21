@@ -41,6 +41,8 @@ def build():
         "--add-data", f"{project_dir / 'assets'};assets",
         "--collect-data", "spellchecker",
         "--hidden-import", "spellchecker",
+        "--collect-all", "pyaudiowpatch",
+        "--hidden-import", "pyaudiowpatch",
     ]
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])

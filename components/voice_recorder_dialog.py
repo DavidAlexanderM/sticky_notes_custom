@@ -2,19 +2,21 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QFileDialog, QFrame, QMessageBox
+    QPushButton, QFileDialog, QFrame, QMessageBox, QComboBox
 )
 from PySide6.QtGui import QCursor
 
 try:
     from ..media_manager import (
         VoiceRecorder, copy_to_attachments, 
-        has_microphone, get_default_microphone_name
+        has_microphone, get_default_microphone_name,
+        has_wasapi_loopback, get_default_speaker_name
     )
 except ImportError:
     from media_manager import (
         VoiceRecorder, copy_to_attachments, 
-        has_microphone, get_default_microphone_name
+        has_microphone, get_default_microphone_name,
+        has_wasapi_loopback, get_default_speaker_name
     )
 
 try:
@@ -26,12 +28,13 @@ except ImportError:
 
 class VoiceRecorderDialog(QDialog):
     """
-    Dialog for recording live audio from microphone or picking an audio file from disk.
+    Dialog for recording live audio (call/dual channel, system audio, or microphone)
+    or picking an audio file from disk.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Voice Recording & Audio")
-        self.setFixedSize(380, 270)
+        self.setWindowTitle("Audio & Call Recording")
+        self.setFixedSize(410, 315)
         self.setModal(True)
         self.result_audio_path = None
 
@@ -42,49 +45,94 @@ class VoiceRecorderDialog(QDialog):
         self.recorder.duration_changed.connect(self._on_duration_changed)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(10)
 
         # Header Title
-        title_label = QLabel("Voice Note", self)
-        title_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {self.pal['text_primary']};")
+        title_label = QLabel("Audio & Call Recording", self)
+        title_label.setStyleSheet(f"font-size: 15px; font-weight: bold; color: {self.pal['text_primary']};")
         layout.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # Audio Source Selector (Call Mode, System Audio, Mic)
+        self.mode_combo = QComboBox(self)
+        self.mode_combo.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {self.pal['input_bg']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['input_border']};
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {self.pal['bg_surface']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['border']};
+                selection-background-color: {self.pal['accent']};
+                selection-color: {self.pal['accent_text']};
+            }}
+            QComboBox:disabled {{
+                color: {self.pal['text_muted']};
+                background-color: {self.pal['bg_main']};
+            }}
+        """)
+        
+        self.has_loopback = has_wasapi_loopback()
+        self.has_mic = has_microphone()
+        self.mic_name = get_default_microphone_name()
+        self.spk_name = get_default_speaker_name()
+
+        if self.has_loopback:
+            self.mode_combo.addItem("🎧 Call / Meeting (Both Voices: Mic + System)", "both")
+            self.mode_combo.addItem("🔊 Computer Audio Only (Callers / Media)", "system")
+            self.mode_combo.addItem("🎙️ Microphone Only (Voice Memo)", "mic")
+            self.mode_combo.setCurrentIndex(0)
+        else:
+            self.mode_combo.addItem("🎙️ Microphone Only (Voice Note)", "mic")
+            self.mode_combo.setCurrentIndex(0)
+        layout.addWidget(self.mode_combo)
 
         # Timer Display
         self.timer_label = QLabel("00:00", self)
-        self.timer_label.setStyleSheet(f"font-size: 32px; font-weight: 700; color: {self.pal['text_primary']};")
+        self.timer_label.setStyleSheet(f"font-size: 30px; font-weight: 700; color: {self.pal['text_primary']};")
         layout.addWidget(self.timer_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # Status Label & Microphone Detection
+        # Status Label showing detected devices
         self.status_label = QLabel(self)
         self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if self.has_loopback and self.spk_name:
+            mic_disp = (self.mic_name[:18] + "…") if self.mic_name and len(self.mic_name) > 18 else (self.mic_name or "Mic Ready")
+            spk_disp = (self.spk_name[:18] + "…") if len(self.spk_name) > 18 else self.spk_name
+            self.status_label.setText(f"🎧 System: {spk_disp} • 🎙️ Mic: {mic_disp}")
+            self.status_label.setStyleSheet("font-size: 11px; color: #16A34A; font-weight: 500;")
+        elif self.has_mic:
+            short_name = (self.mic_name[:30] + "…") if self.mic_name and len(self.mic_name) > 30 else (self.mic_name or "Ready")
+            self.status_label.setText(f"🎙 {short_name}")
+            self.status_label.setStyleSheet("font-size: 11px; color: #16A34A; font-weight: 500;")
+        else:
+            self.status_label.setText("No microphone connected. You can still attach audio files below.")
+            self.status_label.setStyleSheet("font-size: 11px; color: #DC2626; font-weight: 500;")
+        layout.addWidget(self.status_label)
 
         # Record / Stop Button
         self.record_btn = QPushButton(self)
         self.record_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        layout.addWidget(self.record_btn)
-
-        # Check for microphone availability
-        self.has_mic = has_microphone()
-        self.mic_name = get_default_microphone_name()
-
-        if not self.has_mic:
+        if not self.has_mic and not self.has_loopback:
             self.record_btn.setEnabled(False)
-            self.record_btn.setText("🚫 No Microphone Detected")
+            self.record_btn.setText("🚫 No Audio Device Detected")
             self.record_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #E2E8F0;
                     color: #94A3B8;
                     border: none;
                     border-radius: 8px;
-                    padding: 10px 20px;
+                    padding: 9px 18px;
                     font-size: 13px;
                     font-weight: 600;
                 }
             """)
-            self.status_label.setText("No microphone connected. You can still attach audio files below.")
-            self.status_label.setStyleSheet("font-size: 11px; color: #DC2626; font-weight: 500;")
         else:
             self.record_btn.setText("🔴 Start Recording")
             self.record_btn.setStyleSheet("""
@@ -93,16 +141,12 @@ class VoiceRecorderDialog(QDialog):
                     color: #FFFFFF;
                     border: none;
                     border-radius: 8px;
-                    padding: 10px 20px;
+                    padding: 9px 18px;
                     font-size: 14px;
                     font-weight: 600;
                 }
                 QPushButton:hover { background-color: #B91C1C; }
             """)
-            short_name = (self.mic_name[:30] + "...") if self.mic_name and len(self.mic_name) > 30 else (self.mic_name or "Ready")
-            self.status_label.setText(f"🎙 {short_name}")
-            self.status_label.setStyleSheet("font-size: 11px; color: #16A34A; font-weight: 500;")
-
         self.record_btn.clicked.connect(self._toggle_recording)
         layout.addWidget(self.record_btn)
 
@@ -149,16 +193,18 @@ class VoiceRecorderDialog(QDialog):
 
     def _toggle_recording(self):
         if not self.recorder.is_recording():
-            if not has_microphone():
+            mode = self.mode_combo.currentData() or "both"
+            if mode == "mic" and not has_microphone():
                 QMessageBox.warning(
                     self, 
                     "No Microphone", 
-                    "No audio capture device (microphone) was detected on this PC.\n\nPlease connect a headset or microphone, or use the 'From File' button below to attach an audio file."
+                    "No audio capture device (microphone) was detected on this PC.\n\nPlease connect a headset or microphone, or choose 'Computer Audio Only' to record system/call sound."
                 )
                 return
             # Start recording
             try:
-                self.recorder.start_recording()
+                self.mode_combo.setEnabled(False)
+                self.recorder.start_recording(mode=mode)
                 self.record_btn.setText("⏹ Stop & Attach")
                 self.record_btn.setStyleSheet("""
                     QPushButton {
@@ -166,21 +212,22 @@ class VoiceRecorderDialog(QDialog):
                         color: #FFFFFF;
                         border: none;
                         border-radius: 8px;
-                        padding: 10px 20px;
+                        padding: 9px 18px;
                         font-size: 14px;
                         font-weight: 600;
                     }
                     QPushButton:hover { background-color: #334155; }
                 """)
-                self.status_label.setText("Recording in progress...")
+                self.status_label.setText("🔴 Recording call & audio in progress...")
                 self.choose_file_btn.setEnabled(False)
             except Exception as e:
-                QMessageBox.warning(self, "Recording Error", f"Unable to access microphone: {e}")
+                self.mode_combo.setEnabled(True)
+                QMessageBox.warning(self, "Recording Error", f"Unable to access audio devices: {e}")
         else:
             # Stop recording and wait for finalization
             self.record_btn.setEnabled(False)
             self.record_btn.setText("⏳ Finalizing Audio...")
-            self.status_label.setText("Saving and verifying recording...")
+            self.status_label.setText("Mixing and verifying call recording...")
             self.recorder.stop_recording()
 
     def _on_recording_finished(self, saved_path: str):

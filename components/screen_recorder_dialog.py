@@ -21,12 +21,12 @@ try:
     from ..theme_manager import get_theme_manager
     from ..styles import THEME_PALETTES
     from ..icons import get_themed_icon
-    from ..media_manager import ScreenRecorder, get_available_screens, get_available_microphones
+    from ..media_manager import ScreenRecorder, get_available_screens, get_available_microphones, has_wasapi_loopback
 except ImportError:
     from theme_manager import get_theme_manager
     from styles import THEME_PALETTES
     from icons import get_themed_icon
-    from media_manager import ScreenRecorder, get_available_screens, get_available_microphones
+    from media_manager import ScreenRecorder, get_available_screens, get_available_microphones, has_wasapi_loopback
 
 
 class ScreenRecordingOverlay(QWidget):
@@ -173,15 +173,16 @@ class ScreenRecorderDialog(QDialog):
 
         # Card container
         card = QFrame(self)
+        card.setObjectName("ScreenRecorderCard")
         card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#ScreenRecorderCard {{
                 background-color: {self.pal['bg_surface']};
                 border: 1px solid {self.pal['border']};
                 border-radius: 8px;
-                padding: 12px;
             }}
         """)
         card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(14, 14, 14, 14)
         card_layout.setSpacing(10)
 
         # Display selection
@@ -227,22 +228,25 @@ class ScreenRecorderDialog(QDialog):
         self.screen_combo.setStyleSheet(combo_style)
         card_layout.addWidget(self.screen_combo)
 
-        # Audio narration toggle
-        self.audio_check = QCheckBox("🎙️ Record Microphone Narration", card)
-        self.audio_check.setStyleSheet(f"color: {self.pal['text_primary']}; font-size: 12px;")
+        # Audio recording toggle
+        self.audio_check = QCheckBox("🔊 Record Call / Audio", card)
+        self.audio_check.setStyleSheet(f"color: {self.pal['text_primary']}; font-size: 12px; font-weight: 600;")
         self.audio_check.toggled.connect(self._on_audio_toggled)
         card_layout.addWidget(self.audio_check)
 
-        self.mic_combo = QComboBox(card)
-        mics = get_available_microphones()
-        if mics:
-            for mic in mics:
-                self.mic_combo.addItem(mic)
+        self.audio_mode_combo = QComboBox(card)
+        if has_wasapi_loopback():
+            self.audio_mode_combo.addItem("🎧 Call Audio (Both Voices: Mic + System Audio)", "both")
+            self.audio_mode_combo.addItem("🔊 Computer Audio Only (Callers / Media)", "system")
+            self.audio_mode_combo.addItem("🎙️ Microphone Only (Voice Narration)", "mic")
+            self.audio_mode_combo.setCurrentIndex(0)
         else:
-            self.mic_combo.addItem("Default Microphone")
-        self.mic_combo.setEnabled(False)
-        self.mic_combo.setStyleSheet(combo_style)
-        card_layout.addWidget(self.mic_combo)
+            self.audio_mode_combo.addItem("🎙️ Microphone Only (Voice Narration)", "mic")
+            self.audio_mode_combo.setCurrentIndex(0)
+        self.audio_mode_combo.setEnabled(False)
+        self.audio_mode_combo.setStyleSheet(combo_style)
+        self.mic_combo = self.audio_mode_combo  # Backward compatibility alias
+        card_layout.addWidget(self.audio_mode_combo)
 
         layout.addWidget(card)
 
@@ -266,18 +270,18 @@ class ScreenRecorderDialog(QDialog):
         layout.addLayout(btn_row)
 
     def _on_audio_toggled(self, checked: bool):
-        self.mic_combo.setEnabled(checked)
+        self.audio_mode_combo.setEnabled(checked)
 
     def _start_capture(self):
         selected_screen = self.screen_combo.currentData()
         include_audio = self.audio_check.isChecked()
-        mic_device = self.mic_combo.currentText() if include_audio else None
+        audio_mode = self.audio_mode_combo.currentData() if include_audio else "both"
 
         try:
             self.recorder.start_recording(
                 screen=selected_screen,
                 include_audio=include_audio,
-                audio_device_name=mic_device
+                audio_mode=audio_mode
             )
         except Exception as e:
             QMessageBox.critical(self, "Recording Error", f"Failed to start screen capture: {str(e)}")

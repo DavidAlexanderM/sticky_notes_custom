@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.7] - 2026-09-21
+
+### Added & Improved
+- **Two-Way Audio & Call Recording via Windows WASAPI Loopback:**
+  - Implemented `WasapiAudioRecorder` utilizing `PyAudioWPatch` to capture system audio output (headphones/speakers) and microphone input simultaneously.
+  - Added multi-mode audio capture options:
+    - 🎧 **Call / Meeting Mode (Both Voices - Recommended)**: Blends incoming caller audio and Danielle's microphone into a clean, normalized dual-track recording via FFmpeg.
+    - 🔊 **Computer Audio Only**: Captures remote callers, webinar presentations, or computer media without room microphone background noise.
+    - 🎙️ **Microphone Only**: Classic voice memo recording.
+  - Silent keepalive stream keeps Windows WASAPI audio clocks active during conversation pauses, preventing dropped packets or audio sync drifts.
+- **Screen & Video Call Recording Audio Overhaul:**
+  - Integrated call audio recording into `ScreenRecorder`, allowing full video recording of online meetings, webinars, and video calls with both picture and balanced two-way audio.
+- **User Interface Enhancements:**
+  - `VoiceRecorderDialog`: Added audio source selector and live device status indicator displaying detected speaker and microphone endpoints.
+  - `ScreenRecorderDialog`: Added call audio recording checkbox and mode selector, with scoped frame styling eliminating accidental label borders.
+
 ## [1.6.6] - 2026-09-21
 
 ### Fixed & Improved
