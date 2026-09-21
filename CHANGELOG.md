@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.5] - 2026-09-21
+
+### Added & Improved
+- **1-Touch Media Action Buttons (`FormatToolbar`):**
+  - **Audio Recording (`🎙️ Audio`):** Instant 1-touch button opening voice recorder dialog without intermediary menus.
+  - **Screen Capture (`📸 Capture`):** Instant 1-touch desktop snipping tool with interactive drag selection, dimension overlay, and markdown embedding.
+  - **Video Recording (`🎥 Video`):** Instant 1-touch screen video recording trigger.
+  - **Consolidated Media Clip Menu (`📎 Attach ▾`):** Unified attachment picker for images, audio files, video files, and quick access to the attachments folder.
+- **Live In-Editor Spell Checking & Proofing Engine (`proofing_engine.py`):**
+  - Real-time typographical checking underlining misspelled words with Qt's native wavy red squiggles (`SpellCheckUnderline`).
+  - Markdown-aware tokenization: Automatically skips URLs, emails, code blocks, task checkboxes, and markdown symbols.
+  - Right-click spelling correction suggestions (`💡 {suggestion}`) for instant word replacement.
+  - **Personal Dictionary Persistence:** "Add to Personal Dictionary" action saving custom terms into SQLite (`user_dictionary` table).
+  - **Session Word Ignoring:** "Ignore Word" action for temporary omission.
+  - **Bilingual Proofing:** Automatically mirrors the active application language (`English` or `Español`) with full support for Spanish accents.
+  - **Toolbar Proofing Toggle:** Dedicated `ABC✓` button on the format toolbar to enable or disable proofing on the fly.
+
 ## [1.6.4] - 2026-09-20
 
 ### Added & Fixed
