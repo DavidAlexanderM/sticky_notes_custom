@@ -6,12 +6,15 @@ APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPointF
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, 
     QVBoxLayout, QStackedWidget
 )
-from PySide6.QtGui import QIcon, QFont
+from PySide6.QtGui import (
+    QIcon, QFont, QPixmap, QPainter, 
+    QColor, QPen, QPolygonF
+)
 
 try:
     from . import database
@@ -29,18 +32,79 @@ except ImportError:
     from views.editor_view import NoteEditorView
 
 
+def get_app_icon() -> QIcon:
+    """
+    Resolves the application yellow notepad icon across development, installed,
+    and PyInstaller frozen bundles, with a programmatic high-DPI vector fallback.
+    """
+    candidates = [
+        APP_DIR / "assets" / "icon.ico",
+        Path(sys.executable).parent / "assets" / "icon.ico",
+        Path(getattr(sys, "_MEIPASS", "")) / "assets" / "icon.ico",
+        APP_DIR / "assets" / "icon.png",
+        Path(sys.executable).parent / "assets" / "icon.png",
+        Path(getattr(sys, "_MEIPASS", "")) / "assets" / "icon.png",
+    ]
+    for p in candidates:
+        if p and p.is_file():
+            ico = QIcon(str(p))
+            if not ico.isNull():
+                return ico
+
+    # Programmatic fallback: Yellow sticky note card with folded corner & lines
+    icon = QIcon()
+    for size in [16, 20, 24, 32, 48, 64, 128, 256]:
+        pix = QPixmap(size, size)
+        pix.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        pad = max(1, int(size * 0.08))
+        r = max(2, int(size * 0.12))
+        x0, y0 = pad, pad
+        w, h = size - 2 * pad, size - 2 * pad
+
+        # Base yellow card body
+        painter.setBrush(QColor("#FFD54F"))
+        painter.setPen(QPen(QColor("#FFB300"), max(1.0, size * 0.04)))
+        painter.drawRoundedRect(x0, y0, w, h, r, r)
+
+        # Folded top-right corner
+        if size >= 20:
+            fold = int(w * 0.32)
+            fx = x0 + w - fold
+            fy = y0 + fold
+            painter.setBrush(QColor("#FFECB3"))
+            fold_poly = QPolygonF([QPointF(fx, y0), QPointF(x0 + w, fy), QPointF(fx, fy)])
+            painter.drawPolygon(fold_poly)
+
+        # Note lines
+        if size >= 24:
+            painter.setPen(QPen(QColor("#BF8600"), max(1.0, size * 0.04)))
+            line_x0 = x0 + int(w * 0.2)
+            line_x1 = x0 + int(w * 0.8)
+            start_y = y0 + int(h * 0.45)
+            spacing = int((h - int(h * 0.45)) / 4)
+            for i in range(3):
+                ly = start_y + (i + 1) * spacing
+                painter.drawLine(line_x0, ly, line_x1, ly)
+
+        painter.end()
+        icon.addPixmap(pix)
+
+    return icon
+
+
 class MainWindow(QMainWindow):
     """
     Main application single-window container.
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("")
+        self.setWindowTitle(version.APP_NAME)
         
         # Application & Window Icon
-        ico_path = APP_DIR / "assets" / "icon.ico"
-        if ico_path.exists():
-            self.setWindowIcon(QIcon(str(ico_path)))
+        self.setWindowIcon(get_app_icon())
 
         self.resize(920, 680)
         self.setMinimumSize(640, 480)
@@ -102,6 +166,16 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # Set explicit AppUserModelID on Windows so taskbar & titlebar properly link the app icon
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                f"DavidAlexanderM.StickyNotes.{version.__version__}"
+            )
+        except Exception:
+            pass
+
     # High-DPI support
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -109,9 +183,7 @@ def main():
     
     app = QApplication(sys.argv)
     app.setApplicationName(version.APP_NAME)
-    ico_path = APP_DIR / "assets" / "icon.ico"
-    if ico_path.exists():
-        app.setWindowIcon(QIcon(str(ico_path)))
+    app.setWindowIcon(get_app_icon())
     
     # Modern typography
     font = QFont("Segoe UI", 10)

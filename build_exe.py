@@ -39,6 +39,7 @@ def build():
         "--noconfirm",
         "--onedir",
         "--add-data", f"{project_dir / 'styles.py'};.",
+        "--add-data", f"{project_dir / 'assets'};assets",
     ]
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])
@@ -56,6 +57,11 @@ def build():
 
     app_folder = dist_dir / app_name
     print(f"[SUCCESS] Standalone app built at: {app_folder}")
+
+    # Ensure assets directory is also directly in the app folder
+    target_assets = app_folder / "assets"
+    if (project_dir / "assets").exists():
+        shutil.copytree(project_dir / "assets", target_assets, dirs_exist_ok=True)
 
     # Create a ready-to-distribute portable ZIP file (privacy invariant: generic package naming)
     zip_path = dist_dir / f"StickyNotes_v{__version__}_Windows.zip"
