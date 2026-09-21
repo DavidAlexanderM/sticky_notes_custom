@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 # Add project root to sys.path
@@ -254,6 +255,59 @@ def test():
         self.assertIsNotNone(dialog.btn_save_md)
         self.assertIsNotNone(dialog.btn_save_html)
         dialog.close()
+
+    def test_share_dialog_media_extraction_and_packaging(self):
+        """Verify media attachments extraction, file URL stripping, and packaging."""
+        import tempfile, zipfile
+        from media_manager import get_attachments_dir
+        from components.share_dialog import extract_media_attachments
+
+        # Create temporary mock attachment
+        att_dir = get_attachments_dir()
+        test_img = att_dir / "test_share_capture.png"
+        with open(test_img, "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
+
+        try:
+            url_str = f"file:///{test_img.resolve().as_posix()}"
+            sample_content = f"Here is the report:\n![Screenshot]({url_str})\nCheck [audio](attachments/voice.wav)"
+            
+            # 1. Plain text stripping replaces file:/// URLs with readable label
+            stripped = strip_markdown(sample_content)
+            self.assertNotIn("file:///", stripped)
+            self.assertIn("[Screenshot]", stripped)
+
+            # 2. Extract media attachments
+            extracted = extract_media_attachments(sample_content)
+            self.assertTrue(any(p.name == "test_share_capture.png" for p in extracted))
+
+            # 3. ShareNoteDialog with attachments has media buttons
+            dialog = ShareNoteDialog("Media Note", sample_content)
+            self.assertIsNotNone(dialog.btn_copy_image)
+            self.assertIsNotNone(dialog.btn_copy_files)
+            self.assertIsNotNone(dialog.btn_export_zip)
+            self.assertIsNotNone(dialog.btn_open_folder)
+
+            # 4. Test ZIP export package
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                tmp_zip_path = tmp_zip.name
+            
+            with patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(tmp_zip_path, "zip")):
+                dialog._export_zip_package()
+
+            self.assertTrue(Path(tmp_zip_path).exists())
+            with zipfile.ZipFile(tmp_zip_path, "r") as zf:
+                namelist = zf.namelist()
+                self.assertTrue(any(n.endswith(".md") for n in namelist))
+                self.assertIn("attachments/test_share_capture.png", namelist)
+
+            if Path(tmp_zip_path).exists():
+                Path(tmp_zip_path).unlink(missing_ok=True)
+            dialog.close()
+
+        finally:
+            if test_img.exists():
+                test_img.unlink(missing_ok=True)
 
     def test_note_stack_icon_rendering(self):
         """Verify 3D layered note stack vector icon renders cleanly with project colors."""

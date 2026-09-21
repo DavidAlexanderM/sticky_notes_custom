@@ -66,6 +66,17 @@ def build():
     if (project_dir / "assets").exists():
         shutil.copytree(project_dir / "assets", target_assets, dirs_exist_ok=True)
 
+    # Bundle FFmpeg binary into release package if available on build host
+    ffmpeg_exe = shutil.which("ffmpeg")
+    if ffmpeg_exe and Path(ffmpeg_exe).name.lower().endswith(".exe"):
+        dest_ffmpeg = app_folder / "ffmpeg.exe"
+        if not dest_ffmpeg.exists():
+            print(f"[BUILD] Bundling FFmpeg into release package from {ffmpeg_exe}...")
+            shutil.copy2(ffmpeg_exe, dest_ffmpeg)
+    elif (project_dir / "assets" / "bin" / "ffmpeg.exe").exists():
+        dest_ffmpeg = app_folder / "ffmpeg.exe"
+        shutil.copy2(project_dir / "assets" / "bin" / "ffmpeg.exe", dest_ffmpeg)
+
     # Create a ready-to-distribute portable ZIP file (privacy invariant: generic package naming)
     zip_path = dist_dir / f"StickyNotes_v{__version__}_Windows.zip"
     print(f"Creating portable ZIP: {zip_path.name} ...")

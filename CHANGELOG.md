@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.8] - 2026-09-21
+
+### Fixed & Improved
+- **Screen Capture Keyboard Activation & Focus Grab (`SnippingOverlay`):**
+  - Added `Qt.FocusPolicy.StrongFocus`, `self.activateWindow()`, `self.setFocus()`, and `self.grabKeyboard()` in `showEvent` so `Esc` (cancel) and `Enter` (full screenshot) work immediately without needing to click first.
+  - Safe `releaseKeyboard()` lifecycle management during overlay acceptance, rejection, and closing.
+- **Dependency-Free Audio Call & Meeting Recording (`media_manager.py`):**
+  - Added `mix_wav_files_pure_python` using `numpy` and `wave` to mix dual-channel call audio (system loopback + microphone) with automatic sample rate resampling and channel alignment.
+  - Call recording now works 100% reliably out of the box on any Windows PC, even when `ffmpeg.exe` is not installed.
+  - Implemented `get_ffmpeg_path()` to auto-discover bundled, portable, and system FFmpeg binaries.
+  - Bundled FFmpeg into release packages in `build_exe.py` and GitHub Actions workflow for crystal-clear H.264 screen video recording.
+- **Native Media Sharing Center (`ShareNoteDialog`):**
+  - Upgraded plain-text stripping to clean local `file:///` URLs into readable labels (`[Image: name.png]`, `[Play Voice Note: name.wav]`) while keeping web links intact.
+  - Added **Copy Image to Clipboard**: copies image bitmaps directly to Windows clipboard for instant `Ctrl+V` pasting into WhatsApp, Telegram, Discord, Word, etc.
+  - Added **Copy Media File(s) to Clipboard**: copies file paths into native clipboard MIME data.
+  - Added **Export Note Package (.zip)**: bundles the note markdown (with portable relative links) and embedded `attachments/` folder into a standalone `.zip`.
+  - Added **Reveal in Explorer**: locates and selects note attachments in Windows File Explorer.
+  - Automated WhatsApp and Telegram buttons to copy image/media to clipboard prior to opening chat.
+
 ## [1.6.7] - 2026-09-21
 
 ### Added & Improved

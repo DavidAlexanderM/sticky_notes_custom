@@ -184,8 +184,39 @@ class SnippingOverlay(QDialog):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
         self.setGeometry(self.virtual_rect)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.activateWindow()
+        self.setFocus()
+        try:
+            self.grabKeyboard()
+        except Exception:
+            pass
+
+    def closeEvent(self, event):
+        try:
+            self.releaseKeyboard()
+        except Exception:
+            pass
+        super().closeEvent(event)
+
+    def reject(self):
+        try:
+            self.releaseKeyboard()
+        except Exception:
+            pass
+        super().reject()
+
+    def accept(self):
+        try:
+            self.releaseKeyboard()
+        except Exception:
+            pass
+        super().accept()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

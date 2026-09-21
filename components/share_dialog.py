@@ -1,32 +1,61 @@
 """
 share_dialog.py - Comprehensive Multi-App and OS Sharing Center for Sticky Notes.
 Interfaces with Windows native protocols, messaging applications (Mail, WhatsApp, Telegram),
-social platforms, and file export options with full theme integration.
+social platforms, and file/media export options with full theme integration.
 """
 
+import os
 import re
+import sys
+import zipfile
+import subprocess
 import urllib.parse
 from pathlib import Path
-from PySide6.QtCore import Qt, QUrl
+from typing import List
+
+from PySide6.QtCore import Qt, QUrl, QMimeData
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QWidget, QScrollArea, QFrame,
     QGridLayout, QFileDialog, QMessageBox, QApplication
 )
-from PySide6.QtGui import QDesktopServices, QCursor, QFont
+from PySide6.QtGui import QDesktopServices, QCursor, QFont, QImage
 
 try:
     from ..theme_manager import get_theme_manager
     from ..styles import THEME_PALETTES, get_markdown_preview_css
     from ..icons import get_themed_icon
+    from ..media_manager import get_attachments_dir
 except ImportError:
     from theme_manager import get_theme_manager
     from styles import THEME_PALETTES, get_markdown_preview_css
     from icons import get_themed_icon
+    from media_manager import get_attachments_dir
 
 
 def strip_markdown(text: str) -> str:
-    """Removes common markdown formatting syntax for clean plain-text sharing."""
+    """Removes common markdown formatting syntax for clean plain-text sharing without broken local links."""
+    # Convert local file image embeds ![alt](file:///...) to [Image: alt] or [Image]
+    def _clean_img(match):
+        alt = match.group(1).strip()
+        url = match.group(2).strip()
+        if url.startswith("file:") or "attachments" in url or re.search(r'\.(png|jpe?g|gif|webp|bmp)', url, re.I):
+            label = alt if alt else "Image"
+            return f"[{label}]"
+        return f"[{alt}] ({url})" if alt else f"({url})"
+
+    text = re.sub(r'!\[(.*?)\]\((.*?)\)', _clean_img, text)
+
+    # Convert links [text](url) -> if local file, keep [text], if web url keep text (url)
+    def _clean_link(match):
+        label = match.group(1).strip()
+        url = match.group(2).strip()
+        if url.startswith("file:") or "attachments" in url:
+            return f"[{label}]"
+        return f"{label} ({url})" if label else url
+
+    text = re.sub(r'\[(.*?)\]\((.*?)\)', _clean_link, text)
+
     # Remove headings
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     # Remove bold / italic
@@ -34,8 +63,6 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
     # Remove strikethrough
     text = re.sub(r'~~(.*?)~~', r'\1', text)
-    # Convert links [text](url) to text (url)
-    text = re.sub(r'\[(.*?)\]\((.*?)\)', r'\1 (\2)', text)
     # Remove inline code `code`
     text = re.sub(r'`(.*?)`', r'\1', text)
     # Remove blockquotes
@@ -45,10 +72,57 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def extract_media_attachments(content: str) -> List[Path]:
+    """
+    Extracts existing local media attachment file Paths from markdown content.
+    Supports file:/// URIs, relative attachments/ paths, and bare filenames.
+    """
+    if not content:
+        return []
+
+    attachments_dir = get_attachments_dir()
+    found: List[Path] = []
+    seen = set()
+
+    patterns = [
+        r'\[.*?\]\((file:///[^)]+)\)',
+        r'!\[.*?\]\((file:///[^)]+)\)',
+        r'\[.*?\]\((attachments/[^)]+)\)',
+        r'!\[.*?\]\((attachments/[^)]+)\)',
+        r'\[.*?\]\((attachments\\[^)]+)\)',
+        r'!\[.*?\]\((attachments\\[^)]+)\)',
+    ]
+
+    raw_urls = []
+    for pat in patterns:
+        for match in re.findall(pat, content):
+            raw_urls.append(match.strip())
+
+    for u in raw_urls:
+        p: Path = None
+        if u.startswith("file:"):
+            local = QUrl(u).toLocalFile()
+            if local:
+                p = Path(local)
+        elif u.startswith("attachments/") or u.startswith("attachments\\"):
+            p = (attachments_dir / Path(u).name).resolve()
+        else:
+            p = (attachments_dir / Path(u).name).resolve()
+
+        if p and p.exists() and p.is_file():
+            canon = str(p.resolve()).lower()
+            if canon not in seen:
+                seen.add(canon)
+                found.append(p)
+
+    return found
+
+
 class ShareNoteDialog(QDialog):
     """
     Rich modal sharing center enabling one-click transmission of sticky notes
     to Email, WhatsApp, Telegram, Facebook, X, system clipboard, and files.
+    Fully supports native media clipboard pasting and standalone ZIP packages.
     """
     def __init__(self, note_title: str, note_content: str, parent=None):
         super().__init__(parent)
@@ -56,14 +130,25 @@ class ShareNoteDialog(QDialog):
         self.note_content = note_content or ""
         self.plain_content = strip_markdown(self.note_content)
 
+        # Detect and extract media attachments
+        self.attachments = extract_media_attachments(self.note_content)
+        self.image_attachments = [p for p in self.attachments if p.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')]
+        self.audio_attachments = [p for p in self.attachments if p.suffix.lower() in ('.wav', '.mp3', '.m4a', '.aac', '.ogg')]
+        self.video_attachments = [p for p in self.attachments if p.suffix.lower() in ('.mp4', '.webm', '.mkv', '.mov')]
+
+        self.btn_copy_image = None
+        self.btn_copy_files = None
+        self.btn_export_zip = None
+        self.btn_open_folder = None
+
         self.theme_mgr = get_theme_manager()
         self.theme = self.theme_mgr.current_theme
         self.pal = THEME_PALETTES.get(self.theme, THEME_PALETTES["light"])
         self.is_dark = self.theme_mgr.is_dark_mode()
 
         self.setWindowTitle(f"Share Note - {self.note_title}")
-        self.resize(520, 560)
-        self.setMinimumSize(440, 480)
+        self.resize(520, 600)
+        self.setMinimumSize(440, 500)
 
         self._build_ui()
 
@@ -93,8 +178,18 @@ class ShareNoteDialog(QDialog):
         # Character & Word count
         words = len(self.plain_content.split()) if self.plain_content else 0
         chars = len(self.plain_content)
-        meta_text = f"📊 {words} words • {chars} characters"
-        
+        meta_parts = [f"📊 {words} words • {chars} characters"]
+
+        if self.attachments:
+            att_desc = []
+            if self.image_attachments:
+                att_desc.append(f"{len(self.image_attachments)} image{'s' if len(self.image_attachments) > 1 else ''}")
+            if self.audio_attachments:
+                att_desc.append(f"{len(self.audio_attachments)} audio note{'s' if len(self.audio_attachments) > 1 else ''}")
+            if self.video_attachments:
+                att_desc.append(f"{len(self.video_attachments)} video{'s' if len(self.video_attachments) > 1 else ''}")
+            meta_parts.append(f"📎 {len(self.attachments)} attached ({', '.join(att_desc)})")
+
         snippet = self.plain_content[:140] + ("..." if len(self.plain_content) > 140 else "")
         if snippet:
             snip_lbl = QLabel(f'"{snippet}"', summary_card)
@@ -102,7 +197,7 @@ class ShareNoteDialog(QDialog):
             snip_lbl.setWordWrap(True)
             sum_layout.addWidget(snip_lbl)
 
-        meta_lbl = QLabel(meta_text, summary_card)
+        meta_lbl = QLabel(" • ".join(meta_parts), summary_card)
         meta_lbl.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {self.pal['text_muted']}; background: transparent;")
         sum_layout.addWidget(meta_lbl)
 
@@ -153,7 +248,42 @@ class ShareNoteDialog(QDialog):
 
         content_layout.addLayout(grid_apps)
 
-        # Section B: Clipboard & File Export
+        # Section B: Media & Attachments (when attachments exist)
+        if self.attachments:
+            sec_media_title = QLabel("Media & Attachments", content_widget)
+            sec_media_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;")
+            content_layout.addWidget(sec_media_title)
+
+            grid_media = QGridLayout()
+            grid_media.setSpacing(10)
+
+            # Copy Image to Clipboard
+            if self.image_attachments:
+                self.btn_copy_image = self._create_action_btn(" Copy Image to Clipboard", "image", "Copy image bitmap for direct Ctrl+V pasting into chat")
+                self.btn_copy_image.clicked.connect(self._copy_image_to_clipboard)
+                grid_media.addWidget(self.btn_copy_image, 0, 0)
+            else:
+                self.btn_copy_image = None
+
+            # Copy Media Files to Clipboard
+            self.btn_copy_files = self._create_action_btn(" Copy Media File(s)", "paperclip", "Copy attached media files to clipboard for chat or Explorer")
+            self.btn_copy_files.clicked.connect(self._copy_files_to_clipboard)
+            col = 1 if self.image_attachments else 0
+            grid_media.addWidget(self.btn_copy_files, 0, col)
+
+            # Export Note Package (.zip)
+            self.btn_export_zip = self._create_action_btn(" Export Package (.zip)", "archive", "Export ZIP bundle containing note and all media attachments")
+            self.btn_export_zip.clicked.connect(self._export_zip_package)
+            grid_media.addWidget(self.btn_export_zip, 1, 0)
+
+            # Reveal in Explorer
+            self.btn_open_folder = self._create_action_btn(" Reveal in Explorer", "folder", "Locate attachments in Windows File Explorer")
+            self.btn_open_folder.clicked.connect(self._open_attachments_folder)
+            grid_media.addWidget(self.btn_open_folder, 1, 1)
+
+            content_layout.addLayout(grid_media)
+
+        # Section C: Clipboard & File Export
         sec2_title = QLabel("Clipboard & File Export", content_widget)
         sec2_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;")
         content_layout.addWidget(sec2_title)
@@ -252,20 +382,39 @@ class ShareNoteDialog(QDialog):
         self._show_toast("Launched Email client!")
 
     def _share_via_whatsapp(self):
+        toast_extra = ""
+        if self.image_attachments:
+            img = QImage(str(self.image_attachments[0]))
+            if not img.isNull():
+                QApplication.clipboard().setImage(img)
+                toast_extra = " (Image copied: Ctrl+V in chat)"
+        elif self.attachments:
+            self._copy_files_to_clipboard()
+            toast_extra = " (File copied: Ctrl+V in chat)"
+
         text = urllib.parse.quote(self._get_full_text())
         whatsapp_url = f"https://api.whatsapp.com/send?text={text}"
         QDesktopServices.openUrl(QUrl(whatsapp_url))
-        self._show_toast("Opening WhatsApp...")
+        self._show_toast(f"Opening WhatsApp...{toast_extra}")
 
     def _share_via_telegram(self):
+        toast_extra = ""
+        if self.image_attachments:
+            img = QImage(str(self.image_attachments[0]))
+            if not img.isNull():
+                QApplication.clipboard().setImage(img)
+                toast_extra = " (Image copied: Ctrl+V in chat)"
+        elif self.attachments:
+            self._copy_files_to_clipboard()
+            toast_extra = " (File copied: Ctrl+V in chat)"
+
         text = urllib.parse.quote(self._get_full_text())
         telegram_url = f"https://t.me/share/url?url=&text={text}"
         QDesktopServices.openUrl(QUrl(telegram_url))
-        self._show_toast("Opening Telegram...")
+        self._show_toast(f"Opening Telegram...{toast_extra}")
 
     def _share_via_facebook(self):
         text = urllib.parse.quote(self._get_full_text())
-        # Facebook share dialog
         fb_url = f"https://www.facebook.com/sharer/sharer.php?quote={text}"
         QDesktopServices.openUrl(QUrl(fb_url))
         self._show_toast("Opening Facebook...")
@@ -277,6 +426,65 @@ class ShareNoteDialog(QDialog):
         x_url = f"https://twitter.com/intent/tweet?text={text}"
         QDesktopServices.openUrl(QUrl(x_url))
         self._show_toast("Opening X...")
+
+    def _copy_image_to_clipboard(self):
+        """Copies primary image attachment to Windows clipboard as a raw bitmap."""
+        if not self.image_attachments:
+            return
+        img_path = str(self.image_attachments[0])
+        img = QImage(img_path)
+        if not img.isNull():
+            QApplication.clipboard().setImage(img)
+            self._show_toast("Image copied! Paste (Ctrl+V) directly into WhatsApp, Telegram, or any chat.")
+        else:
+            self._show_toast("Could not read image attachment.")
+
+    def _copy_files_to_clipboard(self):
+        """Copies file URLs and text to clipboard so pasting attaches the real files."""
+        if not self.attachments:
+            return
+        mime = QMimeData()
+        urls = [QUrl.fromLocalFile(str(p)) for p in self.attachments]
+        mime.setUrls(urls)
+        mime.setText(self._get_full_text())
+        QApplication.clipboard().setMimeData(mime)
+        count = len(self.attachments)
+        self._show_toast(f"{count} file{'s' if count > 1 else ''} copied! Paste (Ctrl+V) into chat or folder.")
+
+    def _open_attachments_folder(self):
+        """Opens Windows Explorer with the note's first attachment selected."""
+        if self.attachments:
+            target = self.attachments[0]
+            if sys.platform == "win32":
+                subprocess.Popen(f'explorer /select,"{target}"')
+            else:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.parent)))
+            self._show_toast("Opened attachments location!")
+
+    def _export_zip_package(self):
+        """Exports a standalone ZIP containing note markdown and all embedded media attachments."""
+        safe_title = "".join(c for c in self.note_title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Export Note Package (.zip)", f"{safe_title}_package.zip", "Zip Archives (*.zip)")
+        if not file_path:
+            return
+
+        try:
+            portable_content = self.note_content
+            for p in self.attachments:
+                file_url = QUrl.fromLocalFile(str(p)).toString()
+                portable_content = portable_content.replace(file_url, f"attachments/{p.name}")
+                portable_content = portable_content.replace(str(p), f"attachments/{p.name}")
+
+            full_md = f"# {self.note_title}\n\n{portable_content}" if portable_content else f"# {self.note_title}"
+
+            with zipfile.ZipFile(file_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"{safe_title}.md", full_md.encode("utf-8"))
+                for p in self.attachments:
+                    zf.write(p, arcname=f"attachments/{p.name}")
+
+            self._show_toast(f"Exported package to {Path(file_path).name}!")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export note package: {e}")
 
     def _copy_markdown(self):
         QApplication.clipboard().setText(self._get_full_markdown())

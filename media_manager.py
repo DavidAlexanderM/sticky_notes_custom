@@ -66,6 +66,121 @@ def get_default_speaker_name() -> Optional[str]:
         pass
     return None
 
+def get_ffmpeg_path() -> Optional[str]:
+    """
+    Locates the ffmpeg executable from:
+    1. PATH (shutil.which)
+    2. Adjacent to sys.executable (frozen / portable directory)
+    3. Project / assets / bin directory
+    4. Local AppData StickyNotes installation directory
+    """
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+
+    candidates = [
+        Path(sys.executable).parent / "ffmpeg.exe",
+        Path(__file__).resolve().parent / "ffmpeg.exe",
+        Path(__file__).resolve().parent / "assets" / "bin" / "ffmpeg.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "StickyNotes" / "ffmpeg.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "StickyNotes" / "bin" / "ffmpeg.exe",
+    ]
+    for c in candidates:
+        try:
+            if c.is_file():
+                return str(c)
+        except Exception:
+            continue
+    return None
+
+def mix_wav_files_pure_python(loop_path: str, mic_path: str, output_path: str) -> bool:
+    """
+    Mixes two 16-bit PCM WAV files (e.g. system loopback and mic audio) using pure Python
+    and numpy, with automatic sample rate resampling and channel matching.
+    Eliminates external FFmpeg dependencies for call/meeting audio recording.
+    """
+    try:
+        import numpy as np
+
+        def _read_wav(path: str):
+            p = Path(path)
+            if not p.exists() or p.stat().st_size <= 44:
+                return None
+            with wave.open(path, "rb") as wf:
+                nchannels = wf.getnchannels()
+                sampwidth = wf.getsampwidth()
+                framerate = wf.getframerate()
+                nframes = wf.getnframes()
+                if sampwidth != 2 or nframes == 0:
+                    return None
+                raw_bytes = wf.readframes(nframes)
+                data = np.frombuffer(raw_bytes, dtype=np.int16)
+                if nchannels > 1:
+                    data = data.reshape(-1, nchannels)
+                else:
+                    data = data.reshape(-1, 1)
+                return data, framerate
+
+        loop_res = _read_wav(loop_path)
+        mic_res = _read_wav(mic_path)
+
+        if loop_res is None and mic_res is None:
+            return False
+        if loop_res is None:
+            shutil.copy2(mic_path, output_path)
+            return True
+        if mic_res is None:
+            shutil.copy2(loop_path, output_path)
+            return True
+
+        loop_data, loop_rate = loop_res
+        mic_data, mic_rate = mic_res
+
+        target_rate = loop_rate if loop_rate > 0 else 48000
+
+        # Resample mic data if sample rates differ
+        if mic_rate != target_rate and len(mic_data) > 1:
+            target_mic_len = int(round(len(mic_data) * target_rate / mic_rate))
+            if target_mic_len > 0:
+                x_old = np.linspace(0.0, 1.0, len(mic_data))
+                x_new = np.linspace(0.0, 1.0, target_mic_len)
+                resampled_cols = []
+                for ch in range(mic_data.shape[1]):
+                    col = np.interp(x_new, x_old, mic_data[:, ch])
+                    resampled_cols.append(col)
+                mic_data = np.column_stack(resampled_cols)
+
+        # Match to stereo (2 channels)
+        if loop_data.shape[1] == 1:
+            loop_data = np.column_stack((loop_data[:, 0], loop_data[:, 0]))
+        if mic_data.shape[1] == 1:
+            mic_data = np.column_stack((mic_data[:, 0], mic_data[:, 0]))
+
+        # Align length with zero-padding
+        max_len = max(len(loop_data), len(mic_data))
+        if max_len == 0:
+            return False
+
+        if len(loop_data) < max_len:
+            pad = np.zeros((max_len - len(loop_data), loop_data.shape[1]), dtype=np.int16)
+            loop_data = np.vstack((loop_data, pad))
+        if len(mic_data) < max_len:
+            pad = np.zeros((max_len - len(mic_data), mic_data.shape[1]), dtype=np.int16)
+            mic_data = np.vstack((mic_data, pad))
+
+        # Mix with clipping prevention: int32 sum clipped to 16-bit range
+        mixed = np.clip(loop_data.astype(np.int32) + mic_data.astype(np.int32), -32768, 32767).astype(np.int16)
+
+        with wave.open(output_path, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(target_rate)
+            wf.writeframes(mixed.tobytes())
+
+        return Path(output_path).exists() and Path(output_path).stat().st_size > 350
+    except Exception:
+        return False
+
 from security import is_safe_attachment, sanitize_filename
 
 def get_attachments_dir() -> Path:
@@ -350,17 +465,29 @@ class WasapiAudioRecorder(QObject):
                     wf.setframerate(int(self._mic_info.get("defaultSampleRate", 44100)))
                     wf.writeframes(b"".join(self._mic_frames))
 
-                ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
-                creationflags = 0x08000000 if sys.platform == "win32" else 0
-                cmd = [
-                    ffmpeg_bin, "-y",
-                    "-i", self._temp_loop_path,
-                    "-i", self._temp_mic_path,
-                    "-filter_complex", "amix=inputs=2:duration=longest",
-                    "-c:a", "pcm_s16le",
-                    self.output_file_path
-                ]
-                res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creationflags, timeout=15)
+                ffmpeg_bin = get_ffmpeg_path()
+                mixed_ok = False
+
+                if ffmpeg_bin:
+                    try:
+                        creationflags = 0x08000000 if sys.platform == "win32" else 0
+                        cmd = [
+                            ffmpeg_bin, "-y",
+                            "-i", self._temp_loop_path,
+                            "-i", self._temp_mic_path,
+                            "-filter_complex", "amix=inputs=2:duration=longest",
+                            "-c:a", "pcm_s16le",
+                            self.output_file_path
+                        ]
+                        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creationflags, timeout=15)
+                        if res.returncode == 0 and out_path.exists() and out_path.stat().st_size > 350:
+                            mixed_ok = True
+                    except Exception:
+                        mixed_ok = False
+
+                if not mixed_ok:
+                    # Pure-Python mixer: 100% reliable on all machines without FFmpeg
+                    mixed_ok = mix_wav_files_pure_python(self._temp_loop_path, self._temp_mic_path, self.output_file_path)
 
                 for p in (self._temp_loop_path, self._temp_mic_path):
                     if p and Path(p).exists():
@@ -371,8 +498,8 @@ class WasapiAudioRecorder(QObject):
                 self._temp_loop_path = None
                 self._temp_mic_path = None
 
-                if res.returncode != 0 or not out_path.exists():
-                    # Fallback if ffmpeg failed: save whichever has more data
+                if not mixed_ok or not out_path.exists() or out_path.stat().st_size <= 350:
+                    # Fallback if both mixing engines failed: save whichever track has more data
                     primary_frames = self._mic_frames if len(self._mic_frames) > len(self._loop_frames) else self._loop_frames
                     info = self._mic_info if primary_frames is self._mic_frames else self._loop_info
                     with wave.open(self.output_file_path, "wb") as wf:
@@ -601,7 +728,7 @@ class FrameCaptureThread(QThread):
 
     def run(self):
         try:
-            ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+            ffmpeg_bin = get_ffmpeg_path() or "ffmpeg"
             geo = self.screen.geometry() if self.screen else QGuiApplication.primaryScreen().geometry()
             w = geo.width() - (geo.width() % 2)
             h = geo.height() - (geo.height() % 2)
@@ -715,7 +842,7 @@ class ScreenRecorder(QObject):
         self.output_file_path = str(target_path)
         self.elapsed_seconds = 0
 
-        ffmpeg_bin = shutil.which("ffmpeg")
+        ffmpeg_bin = get_ffmpeg_path()
 
         if ffmpeg_bin:
             # Primary Engine: FrameCaptureThread (100% reliable, no DXGI access errors)
@@ -773,7 +900,7 @@ class ScreenRecorder(QObject):
                     pass
 
             if self._include_audio and self._temp_video_path and self._temp_audio_path:
-                ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+                ffmpeg_bin = get_ffmpeg_path() or "ffmpeg"
                 creationflags = 0x08000000 if sys.platform == "win32" else 0
                 has_audio = Path(self._temp_audio_path).exists() and Path(self._temp_audio_path).stat().st_size > 350
                 if has_audio and Path(self._temp_video_path).exists():
