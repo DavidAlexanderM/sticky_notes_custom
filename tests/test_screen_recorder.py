@@ -120,6 +120,34 @@ class TestScreenRecorder(unittest.TestCase):
         self.assertEqual(len(received), 1)
         self.assertTrue(received[0])
 
+    def test_format_toolbar_media_reorganization(self):
+        editor = QTextEdit()
+        toolbar = FormatToolbar(editor)
+
+        # Verify 1-touch direct buttons exist
+        self.assertTrue(hasattr(toolbar, "btn_audio"))
+        self.assertTrue(hasattr(toolbar, "btn_capture"))
+        self.assertTrue(hasattr(toolbar, "btn_video"))
+        self.assertTrue(hasattr(toolbar, "btn_attach"))
+
+        # Verify signals are hooked up to direct button clicks
+        signals_received = []
+        toolbar.add_audio_requested.connect(lambda: signals_received.append("audio"))
+        toolbar.screen_capture_requested.connect(lambda: signals_received.append("capture"))
+        toolbar.record_screen_requested.connect(lambda: signals_received.append("video"))
+        toolbar.attach_audio_requested.connect(lambda: signals_received.append("attach_audio"))
+        toolbar.add_picture_requested.connect(lambda: signals_received.append("attach_picture"))
+        toolbar.add_video_requested.connect(lambda: signals_received.append("attach_video"))
+
+        toolbar.btn_audio.click()
+        toolbar.btn_capture.click()
+        toolbar.btn_video.click()
+        toolbar.attach_audio_requested.emit()
+        toolbar.add_picture_requested.emit()
+        toolbar.add_video_requested.emit()
+
+        self.assertEqual(signals_received, ["audio", "capture", "video", "attach_audio", "attach_picture", "attach_video"])
+
 
 if __name__ == "__main__":
     unittest.main()

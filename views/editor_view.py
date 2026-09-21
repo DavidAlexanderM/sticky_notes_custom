@@ -2,15 +2,18 @@ import os
 import sys
 import subprocess
 import re
+import uuid
+import time
+from datetime import datetime
 from pathlib import Path
 import markdown2
-from PySide6.QtCore import Qt, Signal, QTimer, QUrl
+from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QRect, QPoint
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QTextEdit, QTextBrowser, QPushButton,
-    QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication, QSlider
+    QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication, QSlider, QDialog
 )
-from PySide6.QtGui import QCursor, QDesktopServices
+from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication, QPainter, QPen, QColor, QPixmap
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 try:
     from ..components.color_picker_flyout import ColorPickerFlyout
@@ -100,6 +103,101 @@ class MarkdownTextEdit(QTextEdit):
                 event.acceptProposedAction()
                 return
         super().dropEvent(event)
+
+
+class SnippingOverlay(QDialog):
+    """
+    Interactive full-screen desktop snipping tool overlay.
+    Darkens the desktop and lets the user click-and-drag to select a region.
+    Pressing Enter captures full screen; Esc cancels.
+    """
+    def __init__(self, full_pixmap: QPixmap, parent=None):
+        super().__init__(parent)
+        self.full_pixmap = full_pixmap
+        self.result_pixmap = None
+        self._start_pos = None
+        self._current_pos = None
+        self._is_selecting = False
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+        self.setWindowState(Qt.WindowState.WindowFullScreen)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._start_pos = event.pos()
+            self._current_pos = event.pos()
+            self._is_selecting = True
+            self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._is_selecting:
+            self._current_pos = event.pos()
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self._is_selecting:
+            self._is_selecting = False
+            self._current_pos = event.pos()
+            rect = QRect(self._start_pos, self._current_pos).normalized()
+            if rect.width() >= 8 and rect.height() >= 8:
+                dpr = self.full_pixmap.devicePixelRatio()
+                crop_rect = QRect(
+                    int(rect.x() * dpr),
+                    int(rect.y() * dpr),
+                    int(rect.width() * dpr),
+                    int(rect.height() * dpr)
+                )
+                self.result_pixmap = self.full_pixmap.copy(crop_rect)
+                self.accept()
+            else:
+                self.update()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.reject()
+        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.result_pixmap = self.full_pixmap
+            self.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.drawPixmap(self.rect(), self.full_pixmap)
+
+        # Semi-transparent dark overlay
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
+
+        if self._start_pos and self._current_pos:
+            rect = QRect(self._start_pos, self._current_pos).normalized()
+            if rect.width() > 0 and rect.height() > 0:
+                dpr = self.full_pixmap.devicePixelRatio()
+                src_rect = QRect(
+                    int(rect.x() * dpr),
+                    int(rect.y() * dpr),
+                    int(rect.width() * dpr),
+                    int(rect.height() * dpr)
+                )
+                painter.drawPixmap(rect, self.full_pixmap, src_rect)
+
+                # Accent border around selection
+                painter.setPen(QPen(QColor(0, 120, 215), 2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(rect)
+
+                # Dimensions badge
+                badge_text = f"{rect.width()} × {rect.height()} px"
+                painter.setPen(QColor(255, 255, 255))
+                painter.setBrush(QColor(0, 0, 0, 180))
+                badge_rect = QRect(rect.x(), max(0, rect.y() - 24), 100, 20)
+                painter.drawRoundedRect(badge_rect, 3, 3)
+                painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, badge_text)
 
 
 class NoteEditorView(QWidget):
@@ -286,6 +384,8 @@ class NoteEditorView(QWidget):
         self.format_toolbar.add_audio_requested.connect(self._on_add_audio)
         self.format_toolbar.add_video_requested.connect(self._on_add_video)
         self.format_toolbar.record_screen_requested.connect(self._on_record_screen)
+        self.format_toolbar.screen_capture_requested.connect(self._on_screen_capture)
+        self.format_toolbar.attach_audio_requested.connect(self._on_attach_audio_file)
         self.format_toolbar.open_attachments_requested.connect(self._open_attachments_folder)
         main_layout.addWidget(self.format_toolbar)
 
@@ -891,6 +991,71 @@ class NoteEditorView(QWidget):
             duration = getattr(dialog, "result_duration", 0)
             complete_dialog = RecordingCompleteDialog(dialog.result_video_path, duration=duration, parent=self)
             complete_dialog.exec()
+
+    def _on_screen_capture(self):
+        """Captures a screenshot or interactive region snip and embeds it into the note."""
+        top_window = self.window()
+        was_visible = top_window.isVisible() if top_window else False
+
+        # Briefly hide window so user can capture clean desktop or background windows
+        if top_window and was_visible:
+            top_window.hide()
+            QApplication.processEvents()
+            time.sleep(0.18)
+
+        screen = QGuiApplication.primaryScreen()
+        if not screen:
+            if top_window and was_visible:
+                top_window.show()
+            return
+
+        screenshot = screen.grabWindow(0)
+        overlay = SnippingOverlay(screenshot)
+        res = overlay.exec()
+
+        if top_window and was_visible:
+            if top_window.isMinimized():
+                top_window.showNormal()
+            else:
+                top_window.show()
+            top_window.activateWindow()
+
+        if res == QDialog.DialogCode.Accepted and overlay.result_pixmap and not overlay.result_pixmap.isNull():
+            attachments_dir = get_attachments_dir()
+            attachments_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unique_id = uuid.uuid4().hex[:8]
+            file_name = f"capture_{timestamp}_{unique_id}.png"
+            file_path = attachments_dir / file_name
+
+            overlay.result_pixmap.save(str(file_path), "PNG")
+
+            url = QUrl.fromLocalFile(str(file_path)).toString()
+            cursor = self.editor.textCursor()
+            cursor.insertText(f"\n![Screen Capture: {file_name}]({url})\n")
+            self.editor.setFocus()
+            self._auto_save()
+            self.set_view_mode("split")
+
+    def _on_attach_audio_file(self):
+        """Attaches an existing audio file from local disk."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("attach_audio") if callable(tr) else "Attach Audio File",
+            "",
+            "Audio Files (*.mp3 *.wav *.m4a *.aac *.ogg *.flac *.wma);;All Files (*.*)"
+        )
+        if file_path:
+            try:
+                copied = copy_to_attachments(file_path)
+            except ValueError as e:
+                QMessageBox.warning(self, "Security Alert", str(e))
+                return
+            url = QUrl.fromLocalFile(str(copied)).toString()
+            cursor = self.editor.textCursor()
+            cursor.insertText(f"\n🎵 [Play Voice Note: {copied.name}]({url})\n")
+            self.editor.setFocus()
+            self._auto_save()
 
     def _open_attachments_folder(self):
         """Opens the local attachments directory in the system file manager."""

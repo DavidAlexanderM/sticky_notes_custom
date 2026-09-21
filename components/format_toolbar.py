@@ -41,6 +41,8 @@ class FormatToolbar(QFrame):
     add_video_requested = Signal()
     record_screen_requested = Signal()
     open_attachments_requested = Signal()
+    screen_capture_requested = Signal()
+    attach_audio_requested = Signal()
 
     def __init__(self, editor: QTextEdit, parent=None):
         super().__init__(parent)
@@ -95,20 +97,26 @@ class FormatToolbar(QFrame):
 
         layout.addWidget(self._create_separator())
 
-        # Media: Picture
-        self.btn_picture = FormatButton(text=f" {tr('tooltip_photo')}", icon_name="image", tooltip=tr("tooltip_image"), parent=self)
-        self.btn_picture.clicked.connect(self.add_picture_requested.emit)
-        layout.addWidget(self.btn_picture)
-
-        # Media: Audio / Voice
-        self.btn_audio = FormatButton(text=f" {tr('tooltip_audio')}", icon_name="mic", tooltip=tr("tooltip_voice"), parent=self)
+        # 1-Touch Direct Action: Audio Recording
+        self.btn_audio = FormatButton(text=f" {tr('btn_audio')}", icon_name="mic", tooltip=tr("tooltip_record_audio"), parent=self)
         self.btn_audio.clicked.connect(self.add_audio_requested.emit)
         layout.addWidget(self.btn_audio)
 
-        # Media: Video
-        self.btn_video = FormatButton(text=f" {tr('tooltip_video')}", icon_name="video", tooltip=tr("tooltip_video"), parent=self)
-        self.btn_video.clicked.connect(self._show_video_menu)
+        # 1-Touch Direct Action: Screen Capture
+        self.btn_capture = FormatButton(text=f" {tr('btn_screen_capture')}", icon_name="camera", tooltip=tr("tooltip_screen_capture"), parent=self)
+        self.btn_capture.clicked.connect(self.screen_capture_requested.emit)
+        layout.addWidget(self.btn_capture)
+
+        # 1-Touch Direct Action: Video Recording
+        self.btn_video = FormatButton(text=f" {tr('btn_video')}", icon_name="video", tooltip=tr("tooltip_record_video"), parent=self)
+        self.btn_video.clicked.connect(self.record_screen_requested.emit)
         layout.addWidget(self.btn_video)
+
+        # Unified File Attachments Menu (Clip)
+        self.btn_attach = FormatButton(text=f" {tr('btn_attach')} ▾", icon_name="clip", tooltip=tr("tooltip_attach_media"), parent=self)
+        self.btn_attach.clicked.connect(self._show_attach_menu)
+        layout.addWidget(self.btn_attach)
+        self.btn_picture = self.btn_attach
 
         layout.addStretch()
 
@@ -124,26 +132,34 @@ class FormatToolbar(QFrame):
         self.btn_check.setText(f" {tr('tooltip_task')}")
         self.btn_check.setToolTip(f"{tr('tooltip_checklist')} (- [ ])")
         self.btn_code.setToolTip(f"{tr('tooltip_code')} (```)")
-        self.btn_picture.setText(f" {tr('tooltip_photo')}")
-        self.btn_picture.setToolTip(tr("tooltip_image"))
-        self.btn_audio.setText(f" {tr('tooltip_audio')}")
-        self.btn_audio.setToolTip(tr("tooltip_voice"))
-        self.btn_video.setText(f" {tr('tooltip_video')}")
-        self.btn_video.setToolTip(tr("tooltip_video"))
+        self.btn_audio.setText(f" {tr('btn_audio')}")
+        self.btn_audio.setToolTip(tr("tooltip_record_audio"))
+        self.btn_capture.setText(f" {tr('btn_screen_capture')}")
+        self.btn_capture.setToolTip(tr("tooltip_screen_capture"))
+        self.btn_video.setText(f" {tr('btn_video')}")
+        self.btn_video.setToolTip(tr("tooltip_record_video"))
+        self.btn_attach.setText(f" {tr('btn_attach')} ▾")
+        self.btn_attach.setToolTip(tr("tooltip_attach_media"))
 
-    def _show_video_menu(self):
+    def _show_attach_menu(self):
         menu = QMenu(self)
-        record_action = menu.addAction(f"🔴 {tr('record_screen')}")
-        record_action.triggered.connect(self.record_screen_requested.emit)
+        picture_action = menu.addAction(f"🖼️ {tr('attach_picture')}")
+        picture_action.triggered.connect(self.add_picture_requested.emit)
 
-        choose_action = menu.addAction(f"📁 {tr('choose_video')}")
-        choose_action.triggered.connect(self.add_video_requested.emit)
+        audio_action = menu.addAction(f"🎵 {tr('attach_audio')}")
+        audio_action.triggered.connect(self.attach_audio_requested.emit)
+
+        video_action = menu.addAction(f"🎥 {tr('attach_video')}")
+        video_action.triggered.connect(self.add_video_requested.emit)
 
         menu.addSeparator()
         folder_action = menu.addAction(f"📂 {tr('open_attachments')}")
         folder_action.triggered.connect(self.open_attachments_requested.emit)
 
-        menu.exec(self.btn_video.mapToGlobal(self.btn_video.rect().bottomLeft()))
+        menu.exec(self.btn_attach.mapToGlobal(self.btn_attach.rect().bottomLeft()))
+
+    def _show_video_menu(self):
+        self._show_attach_menu()
 
     def update_icons_for_theme(self, theme: str):
         """Updates all button vector icons when theme changes."""
