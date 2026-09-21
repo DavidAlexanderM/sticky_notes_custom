@@ -19,7 +19,8 @@ def generate_manifest(output_dir: Path = None, tag_name: str = None) -> Path:
         output_dir = PROJECT_ROOT / "dist"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    tag = tag_name or os.environ.get("GITHUB_REF_NAME") or f"v{__version__}"
+    ref_name = os.environ.get("GITHUB_REF_NAME", "")
+    tag = tag_name or os.environ.get("APP_TAG") or (ref_name if ref_name.startswith("v") else f"v{__version__}")
     clean_ver = tag.lstrip("vV")
 
     dist_dir = PROJECT_ROOT / "dist"

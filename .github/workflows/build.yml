@@ -49,11 +49,14 @@ jobs:
 
       - name: Compile Windows Installer (.exe) with Inno Setup
         run: |
-          $ver = if ("${{ github.ref_name }}") { "${{ github.ref_name }}".TrimStart("vV") } else { "1.5.6" }
+          $ver = (python -c "from version import __version__; print(__version__)").Trim()
+          $tag = "v$ver"
+          echo "APP_VERSION=$ver" >> $env:GITHUB_ENV
+          echo "APP_TAG=$tag" >> $env:GITHUB_ENV
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" installer.iss
 
       - name: Generate Release Manifest for Mirror Feed
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: |
           python scripts/generate_release_manifest.py
 
@@ -68,32 +71,36 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Create Primary GitHub Release (On Tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create Primary GitHub Release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.APP_TAG }}
+          name: ${{ env.APP_TAG }}
           files: |
             dist/*.zip
             dist/*.exe
             dist/version.json
           generate_release_notes: true
 
-      - name: Publish to Public Releases Mirror (On Tag)
-        if: startsWith(github.ref, 'refs/tags/v') && env.RELEASE_MIRROR_TOKEN != ''
+      - name: Publish to Public Releases Mirror
+        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.RELEASE_MIRROR_TOKEN != ''
         uses: softprops/action-gh-release@v2
         env:
           RELEASE_MIRROR_TOKEN: ${{ secrets.RELEASE_MIRROR_TOKEN }}
         with:
           repository: DavidAlexanderM/sticky_notes_releases
           token: ${{ secrets.RELEASE_MIRROR_TOKEN }}
+          tag_name: ${{ env.APP_TAG }}
+          name: ${{ env.APP_TAG }}
           files: |
             dist/*.zip
             dist/*.exe
             dist/version.json
           generate_release_notes: true
 
-      - name: Sync Manifest to Public Mirror Main Branch (On Tag)
-        if: startsWith(github.ref, 'refs/tags/v') && env.RELEASE_MIRROR_TOKEN != ''
+      - name: Sync Manifest to Public Mirror Main Branch
+        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.RELEASE_MIRROR_TOKEN != ''
         shell: bash
         env:
           RELEASE_MIRROR_TOKEN: ${{ secrets.RELEASE_MIRROR_TOKEN }}
@@ -104,12 +111,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add version.json
-          git diff-index --quiet HEAD || git commit -m "Update mirror feed manifest to ${{ github.ref_name }}"
+          git diff-index --quiet HEAD || git commit -m "Update mirror feed manifest to ${{ env.APP_TAG }}"
           git push origin main || git push origin master || true
 
       - name: Public Mirror Advisory
-        if: startsWith(github.ref, 'refs/tags/v') && env.RELEASE_MIRROR_TOKEN == ''
+        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.RELEASE_MIRROR_TOKEN == ''
         env:
           RELEASE_MIRROR_TOKEN: ${{ secrets.RELEASE_MIRROR_TOKEN }}
         run: |
-          echo "::warning title=Public Mirror Not Configured::RELEASE_MIRROR_TOKEN secret not set in repository settings. The private release was created, but public mirror publication was skipped. See docs/PUBLIC_MIRROR_SETUP.md for 2-minute setup instructions."
+          echo "::warning title=Public Mirror Not Configured::RELEASE_MIRROR_TOKEN secret not set in repository settings. The release was created, but public mirror publication was skipped. See docs/PUBLIC_MIRROR_SETUP.md for 2-minute setup instructions."
