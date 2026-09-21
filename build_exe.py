@@ -20,14 +20,13 @@ def build():
         if d.exists():
             shutil.rmtree(d, ignore_errors=True)
 
-    # Ensure app icon is generated
+    # Ensure full multi-resolution app icons (.ico and .png) are generated
     icon_path = project_dir / "assets" / "icon.ico"
-    if not icon_path.exists():
-        try:
-            from scripts.generate_app_icon import create_sticky_icon
-            create_sticky_icon()
-        except Exception:
-            pass
+    try:
+        from scripts.generate_app_icon import create_sticky_icon
+        create_sticky_icon()
+    except Exception as e:
+        print(f"[WARN] Icon generation notice: {e}")
 
     # PyInstaller command arguments
     cmd = [

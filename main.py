@@ -36,7 +36,11 @@ def get_app_icon() -> QIcon:
     """
     Resolves the application yellow notepad icon across development, installed,
     and PyInstaller frozen bundles, with a programmatic high-DPI vector fallback.
+    Builds a multi-resolution QIcon supporting all standard Windows taskbar and titlebar dimensions.
     """
+    icon = QIcon()
+
+    # 1. Load from file candidates (both .ico and .png)
     candidates = [
         APP_DIR / "assets" / "icon.ico",
         Path(sys.executable).parent / "assets" / "icon.ico",
@@ -47,13 +51,15 @@ def get_app_icon() -> QIcon:
     ]
     for p in candidates:
         if p and p.is_file():
-            ico = QIcon(str(p))
-            if not ico.isNull():
-                return ico
+            loaded = QIcon(str(p))
+            if not loaded.isNull():
+                for s in loaded.availableSizes():
+                    icon.addPixmap(loaded.pixmap(s))
+                if not icon.isNull() and len(icon.availableSizes()) >= 4:
+                    return icon
 
-    # Programmatic fallback: Yellow sticky note card with folded corner & lines
-    icon = QIcon()
-    for size in [16, 20, 24, 32, 48, 64, 128, 256]:
+    # 2. Programmatic vector generator: creates crisp, high-DPI icons for all Windows sizes
+    for size in [16, 20, 24, 32, 40, 48, 64, 128, 256]:
         pix = QPixmap(size, size)
         pix.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pix)
@@ -166,13 +172,13 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    # Set explicit AppUserModelID on Windows so taskbar & titlebar properly link the app icon
+    # Set explicit constant AppUserModelID on Windows so taskbar & titlebar properly link the app icon
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                f"DavidAlexanderM.StickyNotes.{version.__version__}"
-            )
+            # Constant AppUserModelID across all releases ensures taskbar shortcuts & pins remain linked
+            app_id = "DavidAlexanderM.StickyNotes"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
         except Exception:
             pass
 
@@ -183,7 +189,8 @@ def main():
     
     app = QApplication(sys.argv)
     app.setApplicationName(version.APP_NAME)
-    app.setWindowIcon(get_app_icon())
+    app_icon = get_app_icon()
+    app.setWindowIcon(app_icon)
     
     # Modern typography
     font = QFont("Segoe UI", 10)
@@ -196,7 +203,12 @@ def main():
     theme_mgr.theme_changed.connect(lambda _: app.setStyleSheet(theme_mgr.get_app_stylesheet()))
 
     window = MainWindow()
+    window.setWindowIcon(app_icon)
     window.show()
+
+    # Re-apply window icon to ensure native WM_SETICON reaches realized HWND on Windows
+    if sys.platform == "win32":
+        window.setWindowIcon(app_icon)
 
     sys.exit(app.exec())
 

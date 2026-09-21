@@ -63,7 +63,12 @@ def create_sticky_icon() -> Path:
         append_images=images[:-1]
     )
 
+    # Save high-resolution PNG for Qt & cross-platform fallbacks
+    png_path = assets_dir / "icon.png"
+    images[-1].save(png_path, format="PNG")
+
     print(f"[OK] Generated Windows icon: {ico_path} (Sizes: {sizes})")
+    print(f"[OK] Generated High-DPI icon PNG: {png_path}")
     return ico_path
 
 if __name__ == "__main__":
