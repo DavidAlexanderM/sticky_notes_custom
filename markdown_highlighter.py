@@ -15,9 +15,11 @@ from PySide6.QtGui import (
 try:
     from .styles import THEME_PALETTES
     from .theme_manager import get_theme_manager
+    from .proofing_engine import get_proofing_engine
 except ImportError:
     from styles import THEME_PALETTES
     from theme_manager import get_theme_manager
+    from proofing_engine import get_proofing_engine
 
 
 class MarkdownHighlighter(QSyntaxHighlighter):
@@ -31,6 +33,8 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         self.current_theme = theme
         self.rules: List[Tuple[QRegularExpression, QTextCharFormat, int]] = []
         self._init_formats()
+        self.proofing_engine = get_proofing_engine()
+        self.proofing_engine.dictionary_updated.connect(self.rehighlight)
 
     def set_theme(self, theme: str):
         """Re-initializes formats with new theme palette and triggers rehighlight."""
@@ -214,3 +218,13 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             # Dim the noisy URL
             if url_start >= 0 and url_len > 0:
                 self.setFormat(url_start, url_len, self.fmt_link_url)
+
+        # 4. Live Spell Checking (Wavy Red Squiggles)
+        if self.proofing_engine.is_enabled:
+            for word, start, length in self.proofing_engine.tokenize_line(text):
+                if self.proofing_engine.is_misspelled(word):
+                    current_fmt = self.format(start)
+                    spell_fmt = QTextCharFormat(current_fmt)
+                    spell_fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SpellCheckUnderline)
+                    spell_fmt.setUnderlineColor(QColor("#E53935"))
+                    self.setFormat(start, length, spell_fmt)

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QTextEdit, QTextBrowser, QPushButton,
     QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication, QSlider, QDialog
 )
-from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication, QPainter, QPen, QColor, QPixmap
+from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication, QPainter, QPen, QColor, QPixmap, QTextCursor
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 try:
     from ..components.color_picker_flyout import ColorPickerFlyout
@@ -30,6 +30,7 @@ try:
     from ..markdown_highlighter import MarkdownHighlighter
     from ..components.tag_selector_flyout import TagSelectorFlyout
     from ..i18n import tr, get_translation_manager
+    from ..proofing_engine import get_proofing_engine
     from .. import database
 except ImportError:
     from components.color_picker_flyout import ColorPickerFlyout
@@ -46,6 +47,7 @@ except ImportError:
     from theme_manager import get_theme_manager
     from icons import get_themed_icon
     from markdown_highlighter import MarkdownHighlighter
+    from proofing_engine import get_proofing_engine
     import database
 
 
@@ -103,6 +105,57 @@ class MarkdownTextEdit(QTextEdit):
                 event.acceptProposedAction()
                 return
         super().dropEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Displays spell checking suggestions, personal dictionary actions, or standard edit actions."""
+        cursor = self.cursorForPosition(event.pos())
+        cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+        raw_word = cursor.selectedText()
+        word = raw_word.strip().strip("'\"`.,!?:;()[]{}*~_#")
+
+        engine = get_proofing_engine()
+
+        if engine.is_enabled and word and engine.is_misspelled(word):
+            menu = QMenu(self)
+
+            # Top spelling suggestions
+            suggs = engine.get_suggestions(word, max_candidates=5)
+            if suggs:
+                for sugg in suggs:
+                    action = menu.addAction(f"💡 {sugg}")
+                    def _make_replace(s=sugg, cur=QTextCursor(cursor)):
+                        return lambda: (cur.insertText(s), self.setTextCursor(cur))
+                    action.triggered.connect(_make_replace())
+            else:
+                disabled_act = menu.addAction(f"({tr('no_spelling_suggestions')})")
+                disabled_act.setEnabled(False)
+
+            menu.addSeparator()
+
+            # Add to personal dictionary
+            def _add_to_dict():
+                engine.add_to_personal_dictionary(word)
+            add_act = menu.addAction(f"➕ {tr('add_to_dictionary')}")
+            add_act.triggered.connect(_add_to_dict)
+
+            # Ignore for this session
+            def _ignore():
+                engine.ignore_word(word)
+            ignore_act = menu.addAction(f"🚫 {tr('ignore_word')}")
+            ignore_act.triggered.connect(_ignore)
+
+            menu.addSeparator()
+
+            # Standard context menu actions
+            std_menu = self.createStandardContextMenu()
+            for a in std_menu.actions():
+                menu.addAction(a)
+
+            menu.exec(event.globalPos())
+            return
+
+        super().contextMenuEvent(event)
+
 
 
 class SnippingOverlay(QDialog):
@@ -886,6 +939,11 @@ class NoteEditorView(QWidget):
             self.color_badge.setToolTip(tr("tooltip_palette"))
         if hasattr(self, 'format_toolbar') and hasattr(self.format_toolbar, 'retranslate_ui'):
             self.format_toolbar.retranslate_ui()
+        if hasattr(self, 'highlighter'):
+            engine = get_proofing_engine()
+            lang = getattr(self.i18n, 'current_language', 'en')
+            engine.set_language(lang)
+            self.highlighter.rehighlight()
         self._refresh_tags_bar()
 
     def _on_color_selected(self, hex_val: str):

@@ -40,6 +40,8 @@ def build():
         "--onedir",
         "--add-data", f"{project_dir / 'styles.py'};.",
         "--add-data", f"{project_dir / 'assets'};assets",
+        "--collect-data", "spellchecker",
+        "--hidden-import", "spellchecker",
     ]
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])

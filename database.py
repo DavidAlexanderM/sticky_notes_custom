@@ -81,6 +81,15 @@ def init_db() -> None:
             )
         """)
 
+        # User Dictionary Table (Personal Spell Check Words)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_dictionary (
+                word TEXT PRIMARY KEY,
+                language TEXT NOT NULL DEFAULT 'en',
+                created_at TEXT NOT NULL
+            )
+        """)
+
         # Ensure default project exists
         cursor.execute("SELECT COUNT(*) as count FROM projects WHERE id = 'default'")
         if cursor.fetchone()["count"] == 0:
@@ -573,3 +582,38 @@ def get_all_tag_counts() -> Dict[str, int]:
     return counts
 
 
+# --- User Dictionary (Spell Check Proofing) ---
+
+def add_dictionary_word(word: str, language: str = 'en') -> bool:
+    """Adds a custom user word to the personal dictionary."""
+    clean_word = word.strip().lower()
+    if not clean_word:
+        return False
+    now = datetime.now().isoformat()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO user_dictionary (word, language, created_at)
+            VALUES (?, ?, ?)
+        """, (clean_word, language.lower(), now))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def remove_dictionary_word(word: str) -> bool:
+    """Removes a custom word from the personal dictionary."""
+    clean_word = word.strip().lower()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM user_dictionary WHERE word = ?", (clean_word,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def get_dictionary_words(language: Optional[str] = None) -> List[str]:
+    """Retrieves all custom dictionary words, optionally filtered by language."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if language:
+            cursor.execute("SELECT word FROM user_dictionary WHERE language = ? ORDER BY word ASC", (language.lower(),))
+        else:
+            cursor.execute("SELECT word FROM user_dictionary ORDER BY word ASC")
+        return [row["word"] for row in cursor.fetchall()]

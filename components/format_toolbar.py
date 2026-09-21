@@ -8,9 +8,11 @@ from PySide6.QtGui import QCursor, QTextCursor
 try:
     from ..icons import get_themed_icon
     from ..i18n import tr
+    from ..proofing_engine import get_proofing_engine
 except ImportError:
     from icons import get_themed_icon
     from i18n import tr
+    from proofing_engine import get_proofing_engine
 
 
 class FormatButton(QPushButton):
@@ -120,6 +122,22 @@ class FormatToolbar(QFrame):
 
         layout.addStretch()
 
+        # Spell Check Toggle Button
+        self.proofing_engine = get_proofing_engine()
+        self.btn_spell = FormatButton(
+            text=" ABC✓" if self.proofing_engine.is_enabled else " ABC",
+            tooltip=tr("tooltip_spellcheck"),
+            parent=self
+        )
+        self.btn_spell.setCheckable(True)
+        self.btn_spell.setChecked(self.proofing_engine.is_enabled)
+        self.btn_spell.toggled.connect(self._on_spell_toggled)
+        layout.addWidget(self.btn_spell)
+
+    def _on_spell_toggled(self, checked: bool):
+        self.proofing_engine.set_enabled(checked)
+        self.btn_spell.setText(" ABC✓" if checked else " ABC")
+
     def retranslate_ui(self):
         """Refreshes all button text and tooltips on language change."""
         self.btn_bold.setToolTip(f"{tr('tooltip_bold')}")
@@ -140,6 +158,9 @@ class FormatToolbar(QFrame):
         self.btn_video.setToolTip(tr("tooltip_record_video"))
         self.btn_attach.setText(f" {tr('btn_attach')} ▾")
         self.btn_attach.setToolTip(tr("tooltip_attach_media"))
+        if hasattr(self, 'btn_spell'):
+            self.btn_spell.setToolTip(tr("tooltip_spellcheck"))
+            self.btn_spell.setText(" ABC✓" if self.proofing_engine.is_enabled else " ABC")
 
     def _show_attach_menu(self):
         menu = QMenu(self)
