@@ -189,21 +189,42 @@ class ScreenRecorderDialog(QDialog):
         disp_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_primary']};")
         card_layout.addWidget(disp_lbl)
 
-        self.screen_combo = QComboBox(card)
-        self.screens = get_available_screens()
-        for idx, screen in enumerate(self.screens):
-            geo = screen.geometry()
-            name = screen.name() or f"Display {idx + 1}"
-            self.screen_combo.addItem(f"{name} ({geo.width()}x{geo.height()})", screen)
-        self.screen_combo.setStyleSheet(f"""
+        combo_style = f"""
             QComboBox {{
                 background: {self.pal['input_bg']};
                 color: {self.pal['text_primary']};
                 border: 1px solid {self.pal['input_border']};
                 border-radius: 6px;
-                padding: 5px 8px;
+                padding: 6px 10px;
+                font-size: 12px;
+                font-weight: 500;
             }}
-        """)
+            QComboBox QAbstractItemView {{
+                background: {self.pal['bg_surface']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['border']};
+                selection-background-color: {self.pal['accent']};
+                selection-color: {self.pal['accent_text']};
+            }}
+            QComboBox:disabled {{
+                color: {self.pal['text_muted']};
+                background: {self.pal['bg_main']};
+            }}
+        """
+
+        self.screen_combo = QComboBox(card)
+        self.screens = get_available_screens()
+        primary_screen = QGuiApplication.primaryScreen()
+        for idx, screen in enumerate(self.screens):
+            geo = screen.geometry()
+            name = screen.name() or f"Display {idx + 1}"
+            is_primary = (screen == primary_screen)
+            primary_tag = " (Primary)" if is_primary else ""
+            label = f"Monitor {idx + 1}: {geo.width()}×{geo.height()}{primary_tag}"
+            if name and not name.startswith("\\\\"):
+                label += f" - {name}"
+            self.screen_combo.addItem(label, screen)
+        self.screen_combo.setStyleSheet(combo_style)
         card_layout.addWidget(self.screen_combo)
 
         # Audio narration toggle
@@ -220,19 +241,7 @@ class ScreenRecorderDialog(QDialog):
         else:
             self.mic_combo.addItem("Default Microphone")
         self.mic_combo.setEnabled(False)
-        self.mic_combo.setStyleSheet(f"""
-            QComboBox {{
-                background: {self.pal['input_bg']};
-                color: {self.pal['text_primary']};
-                border: 1px solid {self.pal['input_border']};
-                border-radius: 6px;
-                padding: 5px 8px;
-            }}
-            QComboBox:disabled {{
-                color: {self.pal['text_muted']};
-                background: {self.pal['bg_main']};
-            }}
-        """)
+        self.mic_combo.setStyleSheet(combo_style)
         card_layout.addWidget(self.mic_combo)
 
         layout.addWidget(card)
@@ -407,10 +416,10 @@ class RecordingCompleteDialog(QDialog):
 
         # Info rows
         info_html = f"""
-        <table style="color: {self.pal['text_primary']}; font-size: 12px; line-height: 1.5;">
-            <tr><td style="color: {self.pal['text_muted']}; width: 80px;"><b>File Name:</b></td><td><b>{p.name}</b></td></tr>
-            <tr><td style="color: {self.pal['text_muted']};"><b>Duration:</b></td><td>{dur_str}</td></tr>
-            <tr><td style="color: {self.pal['text_muted']};"><b>File Size:</b></td><td>{file_size_str}</td></tr>
+        <table style="color: {self.pal['text_primary']}; font-size: 13px; line-height: 1.6;">
+            <tr><td style="color: {self.pal['text_secondary']}; width: 85px;"><b>File Name:</b></td><td><b>{p.name}</b></td></tr>
+            <tr><td style="color: {self.pal['text_secondary']};"><b>Duration:</b></td><td><b>{dur_str}</b></td></tr>
+            <tr><td style="color: {self.pal['text_secondary']};"><b>File Size:</b></td><td><b>{file_size_str}</b></td></tr>
         </table>
         """
         info_lbl = QLabel(info_html, card)
@@ -431,9 +440,9 @@ class RecordingCompleteDialog(QDialog):
                 color: {self.pal['text_primary']};
                 border: 1px solid {self.pal['input_border']};
                 border-radius: 6px;
-                padding: 5px 8px;
-                font-family: monospace;
-                font-size: 11px;
+                padding: 6px 8px;
+                font-family: 'Consolas', monospace;
+                font-size: 12px;
             }}
         """)
         path_row.addWidget(self.path_edit)
@@ -447,7 +456,7 @@ class RecordingCompleteDialog(QDialog):
                 border: 1px solid {self.pal['border']};
                 border-radius: 6px;
                 padding: 5px 10px;
-                font-size: 11px;
+                font-size: 12px;
                 font-weight: 600;
             }}
             QPushButton:hover {{

@@ -43,8 +43,8 @@ class UpdateDialog(QDialog):
     def __init__(self, parent=None, auto_check: bool = True):
         super().__init__(parent)
         self.setWindowTitle(f"Sticky Notes - Check for Updates")
-        self.resize(540, 500)
-        self.setMinimumSize(460, 420)
+        self.resize(580, 520)
+        self.setMinimumSize(500, 460)
 
         self.theme_mgr = get_theme_manager()
         self.theme = self.theme_mgr.current_theme
@@ -69,29 +69,29 @@ class UpdateDialog(QDialog):
 
         # Header with Version Info
         header_frame = QFrame(self)
+        header_frame.setObjectName("HeaderFrame")
         header_frame.setStyleSheet(f"""
-            QFrame {{
+            QFrame#HeaderFrame {{
                 background-color: {self.pal['bg_main']};
                 border: 1px solid {self.pal['border']};
                 border-radius: 10px;
-                padding: 12px 16px;
             }}
         """)
         h_layout = QHBoxLayout(header_frame)
-        h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.setContentsMargins(16, 12, 16, 12)
         
         info_col = QVBoxLayout()
         info_col.setSpacing(2)
         title_lbl = QLabel("Sticky Notes Update Center", header_frame)
-        title_lbl.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']}; background: transparent;")
+        title_lbl.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']}; background: transparent; border: none;")
         info_col.addWidget(title_lbl)
 
         ver_lbl = QLabel(f"Installed Version: <b>v{__version__}</b>", header_frame)
-        ver_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']}; background: transparent;")
+        ver_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']}; background: transparent; border: none;")
         info_col.addWidget(ver_lbl)
 
         self.source_lbl = QLabel("Feed: Auto-detecting...", header_frame)
-        self.source_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']}; background: transparent;")
+        self.source_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']}; background: transparent; border: none;")
         info_col.addWidget(self.source_lbl)
 
         h_layout.addLayout(info_col)
@@ -99,28 +99,29 @@ class UpdateDialog(QDialog):
 
         self.status_icon_lbl = QLabel(header_frame)
         self.status_icon_lbl.setPixmap(get_themed_icon("clock", role="primary", theme=self.theme, size=28).pixmap(28, 28))
-        self.status_icon_lbl.setStyleSheet("background: transparent;")
+        self.status_icon_lbl.setStyleSheet("background: transparent; border: none;")
         h_layout.addWidget(self.status_icon_lbl)
 
         layout.addWidget(header_frame)
 
         # Central Dynamic Card
         self.card = QFrame(self)
+        self.card.setObjectName("CentralCard")
         self.card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#CentralCard {{
                 background-color: {self.pal['bg_surface']};
                 border: 1px solid {self.pal['border']};
                 border-radius: 10px;
-                padding: 14px;
             }}
         """)
         self.card_layout = QVBoxLayout(self.card)
-        self.card_layout.setContentsMargins(8, 8, 8, 8)
-        self.card_layout.setSpacing(10)
+        self.card_layout.setContentsMargins(16, 16, 16, 16)
+        self.card_layout.setSpacing(12)
         layout.addWidget(self.card, 1)
 
         # Bottom row
         bottom_row = QHBoxLayout()
+        bottom_row.setContentsMargins(0, 4, 0, 0)
         
         self.token_settings_btn = QPushButton("⚙️ Update Settings...", self)
         self.token_settings_btn.setObjectName("SelectModeButton")
@@ -142,11 +143,26 @@ class UpdateDialog(QDialog):
         self._show_checking_state()
 
     def _clear_card(self):
-        while self.card_layout.count():
-            item = self.card_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
+        # 1. Explicitly detach and delete all child widgets inside self.card
+        for child in self.card.findChildren(QWidget):
+            child.setParent(None)
+            child.deleteLater()
+
+        # 2. Recursively clear any nested layouts and remaining items
+        def _purge_layout(l):
+            if l is None:
+                return
+            while l.count():
+                item = l.takeAt(0)
+                sub = item.layout()
+                if sub is not None:
+                    _purge_layout(sub)
+                w = item.widget()
+                if w is not None:
+                    w.setParent(None)
+                    w.deleteLater()
+
+        _purge_layout(self.card_layout)
 
     # --- View States ---
 
@@ -202,13 +218,14 @@ class UpdateDialog(QDialog):
             font-weight: 700;
             font-size: 12px;
             padding: 4px 8px;
+            border: none;
         """)
         top_row.addWidget(badge)
 
         date_str = release_info.get("published_at", "")[:10]
         if date_str:
             date_lbl = QLabel(f"Released: {date_str}", self.card)
-            date_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']};")
+            date_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']}; border: none; background: transparent;")
             top_row.addWidget(date_lbl)
 
         top_row.addStretch()
@@ -226,15 +243,19 @@ class UpdateDialog(QDialog):
             body_html = f"<pre>{release_info.get('body', '')}</pre>"
 
         notes_browser.setHtml(f"<html><head>{css}</head><body>{body_html}</body></html>")
-        notes_browser.setStyleSheet(f"border: 1px solid {self.pal['border']}; border-radius: 8px; background: {self.pal['bg_main']};")
+        notes_browser.setMinimumHeight(130)
+        notes_browser.setStyleSheet(f"QTextBrowser {{ border: 1px solid {self.pal['border']}; border-radius: 8px; background-color: {self.pal['bg_main']}; }}")
         self.card_layout.addWidget(notes_browser, 1)
 
         # Action row
         action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 8, 0, 0)
+        action_row.setSpacing(10)
         
         gh_btn = QPushButton(" View on GitHub", self.card)
         gh_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=self.theme, size=15))
         gh_btn.setObjectName("SelectModeButton")
+        gh_btn.setFixedHeight(34)
         gh_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         gh_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(release_info.get("html_url", HOMEPAGE))))
         action_row.addWidget(gh_btn)
@@ -243,6 +264,7 @@ class UpdateDialog(QDialog):
 
         download_btn = QPushButton("⬇ Download & Install Update", self.card)
         download_btn.setObjectName("NewNoteButton")
+        download_btn.setFixedHeight(34)
         download_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         download_btn.clicked.connect(self._start_download)
         action_row.addWidget(download_btn)
@@ -282,9 +304,11 @@ class UpdateDialog(QDialog):
         self.card_layout.addStretch()
 
         cancel_row = QHBoxLayout()
+        cancel_row.setContentsMargins(0, 8, 0, 0)
         cancel_row.addStretch()
         cancel_btn = QPushButton("Cancel Download", self.card)
         cancel_btn.setObjectName("SelectModeButton")
+        cancel_btn.setFixedHeight(34)
         cancel_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         cancel_btn.clicked.connect(self._cancel_download)
         cancel_row.addWidget(cancel_btn)
@@ -335,35 +359,42 @@ class UpdateDialog(QDialog):
         self.card_layout.addStretch()
 
         btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 8, 0, 0)
+        btn_row.setSpacing(10)
         btn_row.addStretch()
 
         if is_frozen:
             restart_btn = QPushButton("🚀 Restart Now", self.card)
             restart_btn.setObjectName("NewNoteButton")
+            restart_btn.setFixedHeight(34)
             restart_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             restart_btn.clicked.connect(self._apply_update)
             btn_row.addWidget(restart_btn)
 
             cancel_auto_btn = QPushButton("Cancel Auto-Restart", self.card)
             cancel_auto_btn.setObjectName("SelectModeButton")
+            cancel_auto_btn.setFixedHeight(34)
             cancel_auto_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             cancel_auto_btn.clicked.connect(self._cancel_auto_restart)
             btn_row.addWidget(cancel_auto_btn)
         elif is_exe:
             run_installer_btn = QPushButton("🚀 Run Installer Now", self.card)
             run_installer_btn.setObjectName("NewNoteButton")
+            run_installer_btn.setFixedHeight(34)
             run_installer_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             run_installer_btn.clicked.connect(self._apply_update)
             btn_row.addWidget(run_installer_btn)
 
             open_folder_btn = QPushButton("📂 Open Folder", self.card)
             open_folder_btn.setObjectName("SelectModeButton")
+            open_folder_btn.setFixedHeight(34)
             open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent))))
             btn_row.addWidget(open_folder_btn)
         else:
             open_folder_btn = QPushButton("📂 Open Downloaded Package", self.card)
             open_folder_btn.setObjectName("NewNoteButton")
+            open_folder_btn.setFixedHeight(34)
             open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent))))
             btn_row.addWidget(open_folder_btn)

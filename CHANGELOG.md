@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.6] - 2026-09-21
+
+### Fixed & Improved
+- **Multi-Monitor Screen Capture & Snipping HUD (`SnippingOverlay`):**
+  - Expanded screen capture to composite all connected displays across the virtual desktop coordinate system (`QGuiApplication.screens()`), allowing seamless snipping across dual and multi-screen setups.
+  - Added a prominent, high-contrast HUD instruction banner (`📸 Drag to capture a region • Enter: Full Screen • Esc / Right-Click: Cancel`) positioned top-center in deep slate `#0F172A` with pure white text.
+  - Replaced fixed-width dimension badge with dynamically measured `QFontMetrics` pill and vibrant `#0096FF` accent border, ensuring crystal-clear readability against any desktop background.
+- **Update Center Button Overlap & Frame Styling Fix (`UpdateDialog`):**
+  - Resolved button overlay bug during updater state transitions by completely purging nested layouts and unparenting child widgets in `_clear_card()`.
+  - Fixed stylesheet inheritance on `QFrame` which was causing `QLabel` and `QTextBrowser` elements to inherit unintended borders and padding, restoring clean margins, layout hierarchy, and spacing.
+- **Screen Recording Display Discovery & Dropdown Contrast:**
+  - Enhanced display monitor dropdown labeling with resolution, index, and primary monitor indicator (`Monitor 1: 1920×1080 (Primary)`).
+  - Added global high-contrast `QComboBox` and `QAbstractItemView` styling across light, dark, and sepia themes to prevent illegible dark-on-dark text in Windows drop-downs.
+  - Increased typography size and contrast in `RecordingCompleteDialog`.
+
 ## [1.6.5] - 2026-09-21
 
 ### Added & Improved

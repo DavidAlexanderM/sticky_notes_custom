@@ -298,6 +298,35 @@ QPushButton#CardMenuBtn:hover, QPushButton#CardPaletteBtn:hover {{
     background-color: rgba(128, 128, 128, 0.20);
 }}
 
+/* Modern High-Contrast Combo Boxes */
+QComboBox {{
+    background-color: {pal["input_bg"]};
+    color: {pal["text_primary"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+QComboBox:hover {{
+    border-color: {pal["accent"]};
+}}
+
+QComboBox:focus {{
+    border: 2px solid {pal["accent"]};
+}}
+
+QComboBox QAbstractItemView {{
+    background-color: {pal["bg_surface"]};
+    color: {pal["text_primary"]};
+    border: 1px solid {pal["border"]};
+    border-radius: 6px;
+    selection-background-color: {pal["accent"]};
+    selection-color: {pal["accent_text"]};
+    padding: 4px;
+}}
+
 /* Modern Search Bar */
 QLineEdit#SearchInput {{
     background-color: {pal["input_bg"]};

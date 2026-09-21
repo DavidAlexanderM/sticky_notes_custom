@@ -151,6 +151,53 @@ class TestUpdater(unittest.TestCase):
 
         dialog.close()
 
+    def test_clear_card_prevents_button_overlay(self):
+        """Verifies that transitioning between updater states completely purges previous buttons."""
+        from PySide6.QtWidgets import QPushButton
+        dialog = UpdateDialog(auto_check=False)
+
+        mock_release = {
+            "version": "2.0.0",
+            "tag_name": "v2.0.0",
+            "body": "Release 2.0.0 notes",
+            "html_url": "https://example.com",
+            "published_at": "2026-09-21T00:00:00Z",
+            "asset_name": "StickyNotes_v2.0.0_Windows.zip",
+            "asset_size": 75000000,
+            "browser_download_url": "https://example.com/file.zip",
+            "source": "public_mirror"
+        }
+
+        # 1. State: Update Available
+        dialog._show_update_available(mock_release)
+        btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        self.assertIn("View on GitHub", btn_texts)
+        self.assertTrue(any("Download & Install" in t for t in btn_texts))
+        self.assertEqual(len(btn_texts), 2)
+
+        # 2. State: Downloading (Must NOT retain previous download buttons!)
+        dialog._show_downloading_state()
+        dl_btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        self.assertEqual(dl_btn_texts, ["Cancel Download"])
+        self.assertNotIn("View on GitHub", dl_btn_texts)
+        self.assertFalse(any("Download & Install" in t for t in dl_btn_texts))
+
+        # 3. State: Install Ready (Must NOT retain Cancel Download button!)
+        dialog._show_install_ready("C:/test/file.zip")
+        ready_btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        self.assertNotIn("Cancel Download", ready_btn_texts)
+        self.assertNotIn("View on GitHub", ready_btn_texts)
+        self.assertFalse(any("Download & Install" in t for t in ready_btn_texts))
+
+        # 4. State: Cancelled back to Update Available
+        dialog._cancel_download()
+        reverted_btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        self.assertIn("View on GitHub", reverted_btn_texts)
+        self.assertTrue(any("Download & Install" in t for t in reverted_btn_texts))
+        self.assertEqual(len(reverted_btn_texts), 2)
+
+        dialog.close()
+
 
 if __name__ == "__main__":
     unittest.main()

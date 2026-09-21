@@ -148,6 +148,34 @@ class TestScreenRecorder(unittest.TestCase):
 
         self.assertEqual(signals_received, ["audio", "capture", "video", "attach_audio", "attach_picture", "attach_video"])
 
+    def test_snipping_overlay_virtual_geometry_and_hud(self):
+        """Verifies SnippingOverlay multi-screen virtual geometry and HUD behavior."""
+        from PySide6.QtGui import QPixmap, QKeyEvent
+        from PySide6.QtCore import QRect, Qt, QEvent
+        from views.editor_view import SnippingOverlay
+
+        # Multi-monitor dual 1920x1080 virtual desktop
+        virtual_rect = QRect(0, 0, 3840, 1080)
+        dummy_pix = QPixmap(3840, 1080)
+        overlay = SnippingOverlay(dummy_pix, virtual_rect=virtual_rect)
+
+        self.assertEqual(overlay.geometry().width(), 3840)
+        self.assertEqual(overlay.geometry().height(), 1080)
+        self.assertIsNone(overlay.result_pixmap)
+
+        # Escape key cancels
+        overlay.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
+        self.assertEqual(overlay.result(), 0)
+
+        # Enter key accepts with full pixmap
+        overlay2 = SnippingOverlay(dummy_pix, virtual_rect=virtual_rect)
+        overlay2.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier))
+        self.assertEqual(overlay2.result_pixmap.width(), 3840)
+        self.assertEqual(overlay2.result_pixmap.height(), 1080)
+
+        overlay.close()
+        overlay2.close()
+
 
 if __name__ == "__main__":
     unittest.main()

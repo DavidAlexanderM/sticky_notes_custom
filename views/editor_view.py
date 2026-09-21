@@ -6,6 +6,7 @@ import uuid
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, List, Dict
 import markdown2
 from PySide6.QtCore import Qt, Signal, QTimer, QUrl, QRect, QPoint
 from PySide6.QtWidgets import (
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QTextEdit, QTextBrowser, QPushButton,
     QFrame, QSplitter, QMessageBox, QFileDialog, QMenu, QApplication, QSlider, QDialog
 )
-from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication, QPainter, QPen, QColor, QPixmap, QTextCursor
+from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication, QPainter, QPen, QColor, QPixmap, QTextCursor, QFont, QBrush
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 try:
     from ..components.color_picker_flyout import ColorPickerFlyout
@@ -160,13 +161,18 @@ class MarkdownTextEdit(QTextEdit):
 
 class SnippingOverlay(QDialog):
     """
-    Interactive full-screen desktop snipping tool overlay.
+    Interactive desktop snipping tool overlay supporting single and multi-monitor setups.
     Darkens the desktop and lets the user click-and-drag to select a region.
-    Pressing Enter captures full screen; Esc cancels.
+    Features a high-contrast HUD banner and dynamic dimensions badge for crystal-clear readability.
+    Pressing Enter captures full screen; Esc or Right-Click cancels.
     """
-    def __init__(self, full_pixmap: QPixmap, parent=None):
+    def __init__(self, full_pixmap: QPixmap, virtual_rect: Optional[QRect] = None, parent=None):
         super().__init__(parent)
         self.full_pixmap = full_pixmap
+        self.virtual_rect = virtual_rect or (
+            QGuiApplication.primaryScreen().geometry() if QGuiApplication.primaryScreen()
+            else QRect(0, 0, full_pixmap.width(), full_pixmap.height())
+        )
         self.result_pixmap = None
         self._start_pos = None
         self._current_pos = None
@@ -179,7 +185,7 @@ class SnippingOverlay(QDialog):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
-        self.setWindowState(Qt.WindowState.WindowFullScreen)
+        self.setGeometry(self.virtual_rect)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -187,6 +193,8 @@ class SnippingOverlay(QDialog):
             self._current_pos = event.pos()
             self._is_selecting = True
             self.update()
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.reject()
 
     def mouseMoveEvent(self, event):
         if self._is_selecting:
@@ -199,17 +207,12 @@ class SnippingOverlay(QDialog):
             self._current_pos = event.pos()
             rect = QRect(self._start_pos, self._current_pos).normalized()
             if rect.width() >= 8 and rect.height() >= 8:
-                dpr = self.full_pixmap.devicePixelRatio()
-                crop_rect = QRect(
-                    int(rect.x() * dpr),
-                    int(rect.y() * dpr),
-                    int(rect.width() * dpr),
-                    int(rect.height() * dpr)
-                )
-                self.result_pixmap = self.full_pixmap.copy(crop_rect)
-                self.accept()
-            else:
-                self.update()
+                crop_rect = rect.intersected(QRect(0, 0, self.full_pixmap.width(), self.full_pixmap.height()))
+                if crop_rect.width() >= 8 and crop_rect.height() >= 8:
+                    self.result_pixmap = self.full_pixmap.copy(crop_rect)
+                    self.accept()
+                    return
+            self.update()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
@@ -222,34 +225,77 @@ class SnippingOverlay(QDialog):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        # Draw desktop background
         painter.drawPixmap(self.rect(), self.full_pixmap)
 
-        # Semi-transparent dark overlay
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
+        # Semi-transparent dark overlay (scrim)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 130))
 
+        # 1. Top HUD Instruction Banner (Positioned top-center of primary screen)
+        primary_screen = QGuiApplication.primaryScreen()
+        if primary_screen:
+            p_geo = primary_screen.geometry()
+            cx = (p_geo.x() - self.virtual_rect.x()) + (p_geo.width() // 2)
+            top_y = max(24, (p_geo.y() - self.virtual_rect.y()) + 28)
+        else:
+            cx = self.rect().width() // 2
+            top_y = 28
+
+        hud_font = QFont("Segoe UI", 10, QFont.Weight.DemiBold)
+        painter.setFont(hud_font)
+        fm = painter.fontMetrics()
+        hud_text = "📸 Drag to capture a region  •  Enter: Full Screen  •  Esc / Right-Click: Cancel"
+        text_w = fm.horizontalAdvance(hud_text)
+        hud_w = text_w + 32
+        hud_h = 36
+        hud_rect = QRect(int(cx - hud_w // 2), int(top_y), int(hud_w), int(hud_h))
+
+        # Draw HUD pill
+        painter.setPen(QPen(QColor(255, 255, 255, 45), 1))
+        painter.setBrush(QBrush(QColor(15, 23, 42, 235)))
+        painter.drawRoundedRect(hud_rect, 18, 18)
+
+        # Draw HUD text
+        painter.setPen(QColor(248, 250, 252))
+        painter.drawText(hud_rect, Qt.AlignmentFlag.AlignCenter, hud_text)
+
+        # 2. Active Drag Selection
         if self._start_pos and self._current_pos:
             rect = QRect(self._start_pos, self._current_pos).normalized()
             if rect.width() > 0 and rect.height() > 0:
-                dpr = self.full_pixmap.devicePixelRatio()
-                src_rect = QRect(
-                    int(rect.x() * dpr),
-                    int(rect.y() * dpr),
-                    int(rect.width() * dpr),
-                    int(rect.height() * dpr)
-                )
-                painter.drawPixmap(rect, self.full_pixmap, src_rect)
+                # Reveal original image without dimming in selected area
+                painter.drawPixmap(rect, self.full_pixmap, rect)
 
-                # Accent border around selection
-                painter.setPen(QPen(QColor(0, 120, 215), 2))
+                # Vibrant accent border around selection
+                painter.setPen(QPen(QColor(0, 150, 255), 2))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawRect(rect)
 
                 # Dimensions badge
+                badge_font = QFont("Segoe UI", 10, QFont.Weight.Bold)
+                painter.setFont(badge_font)
+                bfm = painter.fontMetrics()
                 badge_text = f"{rect.width()} × {rect.height()} px"
+                bw = bfm.horizontalAdvance(badge_text) + 20
+                bh = 26
+
+                # Position badge above selection if room, otherwise inside top-left
+                if rect.y() - bh - 6 >= 0:
+                    by = rect.y() - bh - 6
+                else:
+                    by = rect.y() + 8
+                bx = min(rect.x(), self.rect().width() - bw - 8)
+                bx = max(8, bx)
+
+                badge_rect = QRect(int(bx), int(by), int(bw), int(bh))
+                painter.setPen(QPen(QColor(0, 150, 255), 1.5))
+                painter.setBrush(QBrush(QColor(15, 23, 42, 240)))
+                painter.drawRoundedRect(badge_rect, 6, 6)
+
                 painter.setPen(QColor(255, 255, 255))
-                painter.setBrush(QColor(0, 0, 0, 180))
-                badge_rect = QRect(rect.x(), max(0, rect.y() - 24), 100, 20)
-                painter.drawRoundedRect(badge_rect, 3, 3)
                 painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, badge_text)
 
 
@@ -1061,14 +1107,36 @@ class NoteEditorView(QWidget):
             QApplication.processEvents()
             time.sleep(0.18)
 
-        screen = QGuiApplication.primaryScreen()
-        if not screen:
+        screens = QGuiApplication.screens()
+        if not screens:
+            primary = QGuiApplication.primaryScreen()
+            screens = [primary] if primary else []
+
+        if not screens:
             if top_window and was_visible:
                 top_window.show()
             return
 
-        screenshot = screen.grabWindow(0)
-        overlay = SnippingOverlay(screenshot)
+        # Calculate bounding box of all screens in virtual desktop coordinates
+        virtual_geo = screens[0].geometry()
+        for s in screens[1:]:
+            virtual_geo = virtual_geo.united(s.geometry())
+
+        # Grab all screens and composite into virtual pixmap
+        virtual_pixmap = QPixmap(virtual_geo.width(), virtual_geo.height())
+        virtual_pixmap.fill(Qt.GlobalColor.black)
+
+        painter = QPainter(virtual_pixmap)
+        for s in screens:
+            geo = s.geometry()
+            s_pix = s.grabWindow(0)
+            if not s_pix.isNull():
+                dx = geo.x() - virtual_geo.x()
+                dy = geo.y() - virtual_geo.y()
+                painter.drawPixmap(dx, dy, geo.width(), geo.height(), s_pix)
+        painter.end()
+
+        overlay = SnippingOverlay(virtual_pixmap, virtual_rect=virtual_geo)
         res = overlay.exec()
 
         if top_window and was_visible:
