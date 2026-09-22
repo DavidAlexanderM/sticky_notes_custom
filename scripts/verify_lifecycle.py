@@ -63,7 +63,9 @@ def run_automated_tests():
         PROJECT_ROOT / "tests" / "test_projects.py",
         PROJECT_ROOT / "tests" / "test_tags_and_i18n.py",
         PROJECT_ROOT / "tests" / "test_updater.py",
-        PROJECT_ROOT / "tests" / "test_share_dialog.py"
+        PROJECT_ROOT / "tests" / "test_share_dialog.py",
+        PROJECT_ROOT / "tests" / "test_call_recording.py",
+        PROJECT_ROOT / "tests" / "test_proofing.py"
     ]
 
     for test_file in test_files:

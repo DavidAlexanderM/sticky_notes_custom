@@ -72,9 +72,9 @@ All commit messages must follow the [Conventional Commits](https://www.conventio
 
 ---
 
-## 4. The 5-Stage Development Lifecycle Gate
+## 4. The 6-Stage Development Lifecycle Gate
 
-Every proposed change passes through five sequential validation stages:
+Every proposed change passes through six sequential validation stages:
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -91,7 +91,7 @@ Every proposed change passes through five sequential validation stages:
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │ Stage 3: Automated Test Verification                   │
-│ - Unit tests, integration tests, and edge cases pass   │
+│ - 11 automated test suites execute with 0 failures     │
 └────────────────────────────────────────────────────────┘
                            │
                            ▼
@@ -102,28 +102,54 @@ Every proposed change passes through five sequential validation stages:
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Stage 5: Documentation Synchronization                 │
+│ Stage 5: Documentation-as-Code Synchronization         │
 │ - Update ARCHITECTURE.md, README.md, and CHANGELOG.md  │
 └────────────────────────────────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Stage 6: Version Bump & Release Packaging              │
-│ - Bump version.py, build standalone .exe & git tag     │
+│ Stage 6: Version Bump, Packaging & Release Sync        │
+│ - Bump version.py, build Inno Setup installer & tag    │
 └────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 5. The "Definition of Done" (DoD) Checklist
+## 5. Automated CI/CD Pipeline & Dual-Repo Release Distribution
+
+The project automates builds, installer compilation, and releases via GitHub Actions (`.github/workflows/build.yml`):
+
+```mermaid
+flowchart TD
+    Push[Git Push to custom/main or v* tag] --> CI[GitHub Actions: Windows Latest Runner]
+    CI --> Dep[Install Python 3.11, PySide6, FFmpeg, Inno Setup]
+    CI --> Test[Run 11 Test Suites & verify_lifecycle.py Gate]
+    CI --> BuildPy[PyInstaller: Standalone Folder & Portable ZIP]
+    CI --> BuildInno[Inno Setup: Compile StickyNotes_Setup_v*.exe]
+    CI --> GenMan[Generate dist/version.json Manifest]
+    CI --> RelPriv[Publish Release to Primary Private Repo]
+    CI --> RelPub[Publish Release to Public Releases Mirror]
+    CI --> SyncMan[Push version.json to mirror/main for Zero-Token Updater]
+```
+
+### Key Release Artifacts:
+1. `StickyNotes_Setup_v{version}.exe`: Windows installer with desktop shortcut, Start Menu entry, clean uninstaller, and silent update execution.
+2. `StickyNotes_v{version}_Windows.zip`: Standalone portable package with embedded dependencies and bundled FFmpeg.
+3. `version.json`: JSON manifest powering the in-app auto-updater's zero-token public feed.
+
+---
+
+## 6. The "Definition of Done" (DoD) Checklist
 
 A feature is considered **Done** and ready for production only when all boxes are checked:
 
 * [ ] **Code Implementation:** Clean, modular code adhering to PEP 8 standards with full type annotations.
-* [ ] **Automated Testing:** Dedicated test cases written in `tests/` and verified with `0` failures.
+* [ ] **Automated Testing:** Dedicated test cases written in `tests/` and verified with `0` failures across all 11 test suites.
 * [ ] **Security Verification:** `tests/test_security.py` passes 100% and AST scanner (`scripts/security_check.py`) finds 0 high/critical violations.
 * [ ] **Cross-Platform Safety:** Paths use `pathlib.Path` or Qt standard paths (no hardcoded OS-specific backslashes).
-* [ ] **Documentation Sync:** `docs/ARCHITECTURE.md` updated if components or data flows were modified.
+* [ ] **Documentation Sync:** `README.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md` updated to reflect the change.
 * [ ] **Changelog Logged:** Detailed changes recorded under the target version in `CHANGELOG.md`.
-* [ ] **Version Alignment:** `version.py` matches the target milestone.
+* [ ] **Version Alignment:** `version.py` and `installer.iss` match the target milestone.
+* [ ] **Release Manifest:** `version.json` updated with corresponding release URLs and hashes.
 * [ ] **Lifecycle Verification:** `python scripts/verify_lifecycle.py` runs with a `[LIFECYCLE PASSED]` exit code.
+

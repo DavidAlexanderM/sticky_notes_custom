@@ -3,7 +3,7 @@
 
 #define MyAppName "Sticky Notes"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.5.6"
+  #define MyAppVersion "1.7.1"
 #endif
 #define MyAppPublisher "David Alexander M."
 #define MyAppURL "https://github.com/DavidAlexanderM/sticky_notes_releases"

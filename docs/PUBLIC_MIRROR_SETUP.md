@@ -67,22 +67,23 @@ Whenever you are ready to publish a new version:
 1. Bump the version in `version.py` and update `CHANGELOG.md`.
 2. Commit and push:
    ```bash
-   git commit -am "chore(release): bump version to v1.5.6"
-   git tag v1.5.6
-   git push origin main --tags
+   git commit -am "chore(release): bump version to v1.7.1"
+   git tag v1.7.1
+   git push custom custom-edition:main --tags
    ```
 3. GitHub Actions will:
-   - Run tests and lifecycle verification.
-   - Compile the Windows binary and create the `.zip` archive.
-   - Publish the private release on `sticky_notes_app`.
-   - Automatically push `version.json` and `StickyNotes_v1.5.6_Windows.zip` to `DavidAlexanderM/sticky_notes_releases`!
+   - Run all 11 test suites and lifecycle verification.
+   - Compile the PyInstaller executable and Inno Setup installer.
+   - Publish the private release on `sticky_notes_custom`.
+   - Automatically push `version.json`, `StickyNotes_Setup_v1.7.1.exe`, and `StickyNotes_v1.7.1_Windows.zip` to `DavidAlexanderM/sticky_notes_releases`!
 
 ---
 
-## 4. Multi-Tier Resolution in the App
+## 4. Multi-Tier Feed Resolution Hierarchy (v1.6.9+)
 
-If an end-user runs Sticky Notes:
-- **Tier 1 (Public Mirror Feed)**: Queries `https://raw.githubusercontent.com/DavidAlexanderM/sticky_notes_releases/main/version.json`. Zero credentials required.
-- **Tier 2 (Public Release Assets)**: Downloads the binary directly from GitHub releases on `sticky_notes_releases`.
-- **Tier 3 (Fallback Direct)**: If the public mirror is unreachable or if a developer has set `GITHUB_TOKEN`, the app falls back to querying `DavidAlexanderM/sticky_notes_app` directly using the token.
-- **Custom Mirrors**: Users can also configure a custom HTTP/HTTPS feed URL in **Settings -> Update Settings**.
+When an end-user checks for updates:
+- **Tier 1 (Public Mirror Releases API)**: Queries `https://api.github.com/repos/DavidAlexanderM/sticky_notes_releases/releases/latest`. Instant, uncached, zero token required.
+- **Tier 2 (Cache-Busted Mirror Manifest)**: If Tier 1 is rate-limited, queries `version.json?nocache={timestamp}` from raw GitHub usercontent.
+- **Tier 3 (Authenticated Private Repo API)**: If configured with a GitHub PAT, queries `api.github.com/repos/DavidAlexanderM/sticky_notes_custom/releases/latest`.
+- **Tier 4 (Custom Mirror Feed)**: Optional user-configured mirror URL configured in **Update Center -> Update Settings**.
+
