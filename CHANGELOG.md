@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.7.0] - 2026-09-21
+
+### Added & Overhauled
+- **Windows OS Native Sharing Integration (`ShareNoteDialog`):**
+  - Added **Windows System Share Flyout (`invoke_windows_share_ui`)**: Directly invokes the official Windows 10/11 system Share flyout via the native Windows Shell `&Share` COM verb, enabling sharing to Nearby Share, Bluetooth, Contacts, Phone Link, and all installed Windows Store applications.
+  - Added **Windows "Open With..." System Dialog (`invoke_windows_open_with`)**: Launches the native Windows application picker (`rundll32 shell32.dll,OpenAs_RunDLL`) to open and process notes in any desktop app.
+  - Added **Native Interactive Drag & Drop Zone (`DraggableNoteChip`)**: Allows clicking and dragging note text, formatted HTML, and media files directly out of Sticky Notes and dropping them straight into WhatsApp Desktop, Telegram, Outlook, or Windows Explorer.
+  - Added **Phone Link / SMS Integration (`sms:?body=...`)**: Directly triggers Windows Phone Link to send notes as text messages via paired mobile devices.
+- **Elimination of Web Browser Redirects for Desktop Messaging:**
+  - **WhatsApp Desktop (`whatsapp://send?text=...`)**: Launches the native WhatsApp Windows app directly. Automatically copies attached images or media files to the clipboard so pressing `Ctrl+V` immediately attaches the media to the chat.
+  - **Telegram Desktop (`tg://msg?text=...`)**: Directly launches Telegram Desktop with pre-filled text and auto-copied media.
+  - **Microsoft Teams (`msteams:/l/chat/...`)**: Launches Teams desktop chat.
+  - Gracefully falls back to web endpoints only if the respective native desktop application protocol is not registered.
+- **Rich Multi-Format Clipboard Export:**
+  - Added **Copy Rich Text**: Sets multi-format MIME data (plain text, formatted HTML, and image bitmaps) for native pasting into Microsoft Word, Outlook, WordPad, and rich text editors.
+
 ## [1.6.9] - 2026-09-21
 
 ### Fixed & Overhauled

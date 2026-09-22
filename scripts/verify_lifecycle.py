@@ -62,7 +62,8 @@ def run_automated_tests():
         PROJECT_ROOT / "tests" / "test_screen_recorder.py",
         PROJECT_ROOT / "tests" / "test_projects.py",
         PROJECT_ROOT / "tests" / "test_tags_and_i18n.py",
-        PROJECT_ROOT / "tests" / "test_updater.py"
+        PROJECT_ROOT / "tests" / "test_updater.py",
+        PROJECT_ROOT / "tests" / "test_share_dialog.py"
     ]
 
     for test_file in test_files:

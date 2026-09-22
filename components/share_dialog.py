@@ -1,17 +1,20 @@
 """
 share_dialog.py - Comprehensive Multi-App and OS Sharing Center for Sticky Notes.
-Interfaces with Windows native protocols, messaging applications (Mail, WhatsApp, Telegram),
-social platforms, and file/media export options with full theme integration.
+Features direct Windows OS-level sharing integration (Windows System Share flyout,
+'Open With' system dialog, Phone Link SMS), native desktop application protocol handlers
+(WhatsApp Desktop, Telegram Desktop, Mail, Teams) with zero browser redirects,
+native interactive drag-and-drop into external apps, and rich clipboard/file export.
 """
 
 import os
 import re
 import sys
 import zipfile
+import tempfile
 import subprocess
 import urllib.parse
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from PySide6.QtCore import Qt, QUrl, QMimeData
 from PySide6.QtWidgets import (
@@ -19,7 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton, QWidget, QScrollArea, QFrame,
     QGridLayout, QFileDialog, QMessageBox, QApplication
 )
-from PySide6.QtGui import QDesktopServices, QCursor, QFont, QImage
+from PySide6.QtGui import QDesktopServices, QCursor, QFont, QImage, QDrag
 
 try:
     from ..theme_manager import get_theme_manager
@@ -118,11 +121,152 @@ def extract_media_attachments(content: str) -> List[Path]:
     return found
 
 
+def stage_share_files(title: str, content: str, attachments: Optional[List[Path]] = None) -> Path:
+    """
+    Writes a clean, formatted text export of the note to a temporary staging
+    folder so Windows Shell and external applications can access the file.
+    """
+    share_dir = Path(tempfile.gettempdir()) / "StickyNotes_Share"
+    share_dir.mkdir(parents=True, exist_ok=True)
+    safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip() or "note"
+    staged_path = share_dir / f"{safe_title}.txt"
+    try:
+        full_text = f"{title}\n\n{content}".strip()
+        staged_path.write_text(full_text, encoding="utf-8")
+    except Exception:
+        pass
+    return staged_path
+
+
+def invoke_windows_share_ui(file_path: Path, hwnd: Optional[int] = None) -> bool:
+    """
+    Invokes the native Windows OS Share flyout on the given file path
+    via the Windows Shell Application COM interface (&Share verb).
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        if hwnd:
+            try:
+                import win32gui
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+
+        import win32com.client
+        import pythoncom
+        pythoncom.CoInitialize()
+        shell = win32com.client.Dispatch("Shell.Application")
+        folder = shell.Namespace(str(file_path.parent.resolve()))
+        if not folder:
+            return False
+        item = folder.ParseName(file_path.name)
+        if not item:
+            return False
+        for v in item.Verbs():
+            name_clean = v.Name.lower().replace("&", "").strip()
+            if name_clean in ("share", "compartir", "partager", "freigeben"):
+                v.DoIt()
+                return True
+    except Exception as e:
+        print(f"[WARN] invoke_windows_share_ui failed: {e}")
+    return False
+
+
+def invoke_windows_open_with(file_path: Path) -> bool:
+    """
+    Opens the official Windows 'Open With...' system dialog for the specified file.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        subprocess.Popen(["rundll32.exe", "shell32.dll,OpenAs_RunDLL", str(file_path.resolve())])
+        return True
+    except Exception as e:
+        print(f"[WARN] invoke_windows_open_with failed: {e}")
+    return False
+
+
+class DraggableNoteChip(QFrame):
+    """
+    Interactive UI card that allows clicking and dragging the note content
+    or its attachments directly into external Windows applications (WhatsApp Desktop,
+    Telegram, Outlook, Windows Explorer, Word, etc.).
+    """
+    def __init__(self, get_drag_data_callback, pal: dict, parent=None):
+        super().__init__(parent)
+        self.get_drag_data = get_drag_data_callback
+        self.pal = pal
+        self._drag_start_pos = None
+        self.setObjectName("DraggableNoteChip")
+        self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
+        self.setToolTip("Click and drag this note directly into WhatsApp, Telegram, Outlook, or Windows Explorer")
+
+        self.setStyleSheet(f"""
+            QFrame#DraggableNoteChip {{
+                background-color: {self.pal['bg_surface']};
+                border: 2px dashed {self.pal['accent']};
+                border-radius: 8px;
+                padding: 10px 14px;
+            }}
+            QFrame#DraggableNoteChip:hover {{
+                background-color: {self.pal['btn_hover']};
+                border-style: solid;
+            }}
+        """)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(12)
+
+        icon_lbl = QLabel(self)
+        icon_lbl.setPixmap(get_themed_icon("paperclip", role="accent", theme=self.pal.get("theme", "light"), size=22).pixmap(22, 22))
+        icon_lbl.setStyleSheet("border: none; background: transparent;")
+        layout.addWidget(icon_lbl)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        title_lbl = QLabel("✋ Drag Note to Any Desktop App", self)
+        title_lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {self.pal['accent']}; border: none; background: transparent;")
+        text_col.addWidget(title_lbl)
+
+        desc_lbl = QLabel("Click and drop into WhatsApp Desktop, Telegram, Outlook, or File Explorer", self)
+        desc_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']}; border: none; background: transparent;")
+        text_col.addWidget(desc_lbl)
+        layout.addLayout(text_col, 1)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.pos()
+            self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
+        super().mouseReleaseEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            return
+        if not self._drag_start_pos:
+            return
+        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+            return
+
+        drag = QDrag(self)
+        mime = self.get_drag_data()
+        if mime:
+            drag.setMimeData(mime)
+            drag.exec(Qt.DropAction.CopyAction)
+        self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
+        self._drag_start_pos = None
+
+
 class ShareNoteDialog(QDialog):
     """
     Rich modal sharing center enabling one-click transmission of sticky notes
-    to Email, WhatsApp, Telegram, Facebook, X, system clipboard, and files.
-    Fully supports native media clipboard pasting and standalone ZIP packages.
+    using native Windows OS sharing, direct desktop app protocols (WhatsApp Desktop,
+    Telegram Desktop, Email, Teams, Phone Link SMS), drag-and-drop, and rich clipboard/file export.
     """
     def __init__(self, note_title: str, note_content: str, parent=None):
         super().__init__(parent)
@@ -147,15 +291,15 @@ class ShareNoteDialog(QDialog):
         self.is_dark = self.theme_mgr.is_dark_mode()
 
         self.setWindowTitle(f"Share Note - {self.note_title}")
-        self.resize(520, 600)
-        self.setMinimumSize(440, 500)
+        self.resize(540, 680)
+        self.setMinimumSize(460, 560)
 
         self._build_ui()
 
     def _build_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 18, 20, 18)
-        main_layout.setSpacing(14)
+        main_layout.setSpacing(12)
 
         # 1. Note Summary Card
         summary_card = QFrame(self)
@@ -203,7 +347,11 @@ class ShareNoteDialog(QDialog):
 
         main_layout.addWidget(summary_card)
 
-        # 2. Action Groups (Scrollable)
+        # 2. Interactive Drag & Drop Zone
+        self.drag_chip = DraggableNoteChip(self._get_drag_mime_data, self.pal, self)
+        main_layout.addWidget(self.drag_chip)
+
+        # 3. Action Groups (Scrollable)
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -211,47 +359,81 @@ class ShareNoteDialog(QDialog):
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 4, 0, 4)
-        content_layout.setSpacing(16)
+        content_layout.setSpacing(14)
 
-        # Section A: Send to App / Messaging
-        sec1_title = QLabel("Send to Apps & Messaging", content_widget)
-        sec1_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px;")
-        content_layout.addWidget(sec1_title)
+        # Section A: Windows OS Native Integration
+        sec_os_title = QLabel("Windows OS Native Sharing", content_widget)
+        sec_os_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px;")
+        content_layout.addWidget(sec_os_title)
+
+        grid_os = QGridLayout()
+        grid_os.setSpacing(10)
+
+        # Windows System Share Sheet
+        self.btn_win_share = self._create_action_btn("🪟 Windows Share Flyout", "share", "Open official Windows 10/11 Share UI (Nearby Share, Store Apps, Bluetooth)")
+        self.btn_win_share.clicked.connect(self._share_via_windows_system)
+        grid_os.addWidget(self.btn_win_share, 0, 0)
+
+        # Open With Dialog
+        self.btn_open_with = self._create_action_btn("⚙️ Open With...", "external_link", "Choose any installed Windows app to open or process this note")
+        self.btn_open_with.clicked.connect(self._share_via_open_with)
+        grid_os.addWidget(self.btn_open_with, 0, 1)
+
+        # Phone Link / SMS
+        self.btn_sms = self._create_action_btn("📱 Phone Link (SMS)", "smartphone", "Send note as text message via Windows Phone Link")
+        self.btn_sms.clicked.connect(self._share_via_sms)
+        grid_os.addWidget(self.btn_sms, 1, 0)
+
+        # Reveal in Explorer
+        self.btn_open_folder = self._create_action_btn("📁 Reveal in Explorer", "folder", "Locate note file and attachments in Windows File Explorer")
+        self.btn_open_folder.clicked.connect(self._open_attachments_folder)
+        grid_os.addWidget(self.btn_open_folder, 1, 1)
+
+        content_layout.addLayout(grid_os)
+
+        # Section B: Direct Desktop Apps (Native Protocols - No Web Redirects)
+        sec_apps_title = QLabel("Direct Desktop Applications", content_widget)
+        sec_apps_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px;")
+        content_layout.addWidget(sec_apps_title)
 
         grid_apps = QGridLayout()
         grid_apps.setSpacing(10)
 
+        # WhatsApp Desktop
+        self.btn_whatsapp = self._create_action_btn(" WhatsApp Desktop", "message_circle", "Send directly via native WhatsApp Desktop app (Auto-copies images/files for Ctrl+V)")
+        self.btn_whatsapp.clicked.connect(self._share_via_whatsapp)
+        grid_apps.addWidget(self.btn_whatsapp, 0, 0)
+
+        # Telegram Desktop
+        self.btn_telegram = self._create_action_btn(" Telegram Desktop", "send", "Send directly via native Telegram Desktop app (Auto-copies images/files for Ctrl+V)")
+        self.btn_telegram.clicked.connect(self._share_via_telegram)
+        grid_apps.addWidget(self.btn_telegram, 0, 1)
+
         # Email
         self.btn_mail = self._create_action_btn(" Default Email Client", "mail", "Open Outlook, Windows Mail, or Thunderbird")
         self.btn_mail.clicked.connect(self._share_via_email)
-        grid_apps.addWidget(self.btn_mail, 0, 0)
+        grid_apps.addWidget(self.btn_mail, 1, 0)
 
-        # WhatsApp
-        self.btn_whatsapp = self._create_action_btn(" WhatsApp", "message_circle", "Send via WhatsApp Desktop or Web")
-        self.btn_whatsapp.clicked.connect(self._share_via_whatsapp)
-        grid_apps.addWidget(self.btn_whatsapp, 0, 1)
+        # Microsoft Teams
+        self.btn_teams = self._create_action_btn(" Microsoft Teams", "users", "Start a chat in Microsoft Teams")
+        self.btn_teams.clicked.connect(self._share_via_teams)
+        grid_apps.addWidget(self.btn_teams, 1, 1)
 
-        # Telegram
-        self.btn_telegram = self._create_action_btn(" Telegram", "send", "Send via Telegram Desktop or Web")
-        self.btn_telegram.clicked.connect(self._share_via_telegram)
-        grid_apps.addWidget(self.btn_telegram, 1, 0)
-
-        # Facebook
+        # Facebook & X (Retained for web sharing)
         self.btn_facebook = self._create_action_btn(" Facebook", "globe", "Share to Facebook feed or messages")
         self.btn_facebook.clicked.connect(self._share_via_facebook)
-        grid_apps.addWidget(self.btn_facebook, 1, 1)
+        grid_apps.addWidget(self.btn_facebook, 2, 0)
 
-        # X / Twitter
         self.btn_x = self._create_action_btn(" X (Twitter)", "external_link", "Post note snippet to X")
         self.btn_x.clicked.connect(self._share_via_x)
-        grid_apps.addWidget(self.btn_x, 2, 0, 1, 2)
+        grid_apps.addWidget(self.btn_x, 2, 1)
 
         content_layout.addLayout(grid_apps)
 
-        # Section B: Media & Attachments (when attachments exist)
+        # Section C: Media & Attachments (when attachments exist)
         if self.attachments:
             sec_media_title = QLabel("Media & Attachments", content_widget)
-            sec_media_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;")
+            sec_media_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px;")
             content_layout.addWidget(sec_media_title)
 
             grid_media = QGridLayout()
@@ -274,42 +456,42 @@ class ShareNoteDialog(QDialog):
             # Export Note Package (.zip)
             self.btn_export_zip = self._create_action_btn(" Export Package (.zip)", "archive", "Export ZIP bundle containing note and all media attachments")
             self.btn_export_zip.clicked.connect(self._export_zip_package)
-            grid_media.addWidget(self.btn_export_zip, 1, 0)
-
-            # Reveal in Explorer
-            self.btn_open_folder = self._create_action_btn(" Reveal in Explorer", "folder", "Locate attachments in Windows File Explorer")
-            self.btn_open_folder.clicked.connect(self._open_attachments_folder)
-            grid_media.addWidget(self.btn_open_folder, 1, 1)
+            grid_media.addWidget(self.btn_export_zip, 1, 0, 1, 2 if not self.image_attachments else 1)
 
             content_layout.addLayout(grid_media)
 
-        # Section C: Clipboard & File Export
-        sec2_title = QLabel("Clipboard & File Export", content_widget)
-        sec2_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;")
-        content_layout.addWidget(sec2_title)
+        # Section D: Clipboard & Document Export
+        sec_files_title = QLabel("Clipboard & Document Export", content_widget)
+        sec_files_title.setStyleSheet(f"font-size: 12px; font-weight: 700; color: {self.pal['accent']}; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px;")
+        content_layout.addWidget(sec_files_title)
 
         grid_files = QGridLayout()
         grid_files.setSpacing(10)
 
-        # Copy Markdown
-        self.btn_copy_md = self._create_action_btn(" Copy Markdown", "copy", "Copy formatted markdown syntax")
-        self.btn_copy_md.clicked.connect(self._copy_markdown)
-        grid_files.addWidget(self.btn_copy_md, 0, 0)
+        # Copy Rich Text (Formatted)
+        self.btn_copy_rich = self._create_action_btn(" Copy Rich Text", "copy", "Copy formatted text for Word, Outlook, and WordPad")
+        self.btn_copy_rich.clicked.connect(self._copy_rich_text)
+        grid_files.addWidget(self.btn_copy_rich, 0, 0)
 
         # Copy Plain Text
         self.btn_copy_txt = self._create_action_btn(" Copy Plain Text", "copy", "Copy text without markdown symbols")
         self.btn_copy_txt.clicked.connect(self._copy_plain_text)
         grid_files.addWidget(self.btn_copy_txt, 0, 1)
 
+        # Copy Markdown
+        self.btn_copy_md = self._create_action_btn(" Copy Markdown", "copy", "Copy raw markdown syntax")
+        self.btn_copy_md.clicked.connect(self._copy_markdown)
+        grid_files.addWidget(self.btn_copy_md, 1, 0)
+
         # Save as Markdown
         self.btn_save_md = self._create_action_btn(" Export as .md", "file_text", "Save as local Markdown file")
         self.btn_save_md.clicked.connect(self._export_markdown_file)
-        grid_files.addWidget(self.btn_save_md, 1, 0)
+        grid_files.addWidget(self.btn_save_md, 1, 1)
 
         # Save as HTML
         self.btn_save_html = self._create_action_btn(" Export as .html", "globe", "Save as styled standalone webpage")
         self.btn_save_html.clicked.connect(self._export_html_file)
-        grid_files.addWidget(self.btn_save_html, 1, 1)
+        grid_files.addWidget(self.btn_save_html, 2, 0, 1, 2)
 
         content_layout.addLayout(grid_files)
         content_layout.addStretch()
@@ -317,14 +499,14 @@ class ShareNoteDialog(QDialog):
         scroll.setWidget(content_widget)
         main_layout.addWidget(scroll, 1)
 
-        # 3. Status Toast / Feedback Label
+        # 4. Status Toast / Feedback Label
         self.status_feedback = QLabel("", self)
         self.status_feedback.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_feedback.setStyleSheet(f"font-size: 12px; font-weight: 600; color: {self.pal['accent']};")
         self.status_feedback.setVisible(False)
         main_layout.addWidget(self.status_feedback)
 
-        # 4. Bottom Controls
+        # 5. Bottom Controls
         bottom_row = QHBoxLayout()
         bottom_row.addStretch()
 
@@ -366,7 +548,7 @@ class ShareNoteDialog(QDialog):
         self.status_feedback.setText(f"✓ {message}")
         self.status_feedback.setVisible(True)
 
-    # --- Sharing Handlers ---
+    # --- Helpers ---
 
     def _get_full_text(self) -> str:
         return f"{self.note_title}\n\n{self.plain_content}" if self.plain_content else self.note_title
@@ -374,44 +556,138 @@ class ShareNoteDialog(QDialog):
     def _get_full_markdown(self) -> str:
         return f"# {self.note_title}\n\n{self.note_content}" if self.note_content else f"# {self.note_title}"
 
+    def _get_full_html(self) -> str:
+        try:
+            import markdown2
+            html_body = markdown2.markdown(self.note_content, extras=["fenced-code-blocks", "tables", "task_list", "strike"])
+        except Exception:
+            html_body = f"<p>{self.plain_content}</p>"
+        return f"<h3>{self.note_title}</h3>\n{html_body}"
+
+    def _stage_note_file(self) -> Path:
+        """Writes note to temporary staging directory for shell operations."""
+        return stage_share_files(self.note_title, self.plain_content, self.attachments)
+
+    def _get_drag_mime_data(self) -> QMimeData:
+        """Produces rich multi-format MIME data for native Windows drag & drop."""
+        mime = QMimeData()
+        mime.setText(self._get_full_text())
+        mime.setHtml(self._get_full_html())
+        staged = self._stage_note_file()
+        urls = [QUrl.fromLocalFile(str(staged))]
+        for p in self.attachments:
+            urls.append(QUrl.fromLocalFile(str(p)))
+        mime.setUrls(urls)
+        return mime
+
+    # --- OS-Level & Protocol Sharing Handlers ---
+
+    def _share_via_windows_system(self):
+        """Invokes official Windows 10/11 Share UI flyout."""
+        staged = self._stage_note_file()
+        success = invoke_windows_share_ui(staged, hwnd=int(self.winId()))
+        if success:
+            self._show_toast("Opened Windows System Share flyout!")
+        else:
+            # Fallback to Open With dialog if Shell Share verb not available
+            invoke_windows_open_with(staged)
+            self._show_toast("Opened Windows 'Open With' dialog.")
+
+    def _share_via_open_with(self):
+        """Opens Windows 'Open With' system dialog."""
+        staged = self._stage_note_file()
+        invoke_windows_open_with(staged)
+        self._show_toast("Opened Windows 'Open With' dialog.")
+
+    def _share_via_sms(self):
+        """Launches Windows Phone Link / SMS messaging."""
+        text = urllib.parse.quote(self._get_full_text())
+        sms_uri = f"sms:?body={text}"
+        QDesktopServices.openUrl(QUrl(sms_uri))
+        self._show_toast("Opening Windows Phone Link / SMS...")
+
+    def _share_via_whatsapp(self):
+        """Directly invokes WhatsApp Desktop native protocol, auto-copying media to clipboard."""
+        toast_extra = ""
+        if self.image_attachments:
+            img = QImage(str(self.image_attachments[0]))
+            if not img.isNull():
+                QApplication.clipboard().setImage(img)
+                toast_extra = " • Image ready to paste (Ctrl+V)"
+        elif self.attachments:
+            self._copy_files_to_clipboard()
+            toast_extra = " • Files ready to paste (Ctrl+V)"
+
+        text = urllib.parse.quote(self._get_full_text())
+        native_uri = f"whatsapp://send?text={text}"
+
+        launched = False
+        try:
+            launched = QDesktopServices.openUrl(QUrl(native_uri))
+        except Exception:
+            launched = False
+
+        if not launched:
+            # Fallback to web redirect only if native app failed to launch
+            web_uri = f"https://web.whatsapp.com/send?text={text}"
+            QDesktopServices.openUrl(QUrl(web_uri))
+            self._show_toast(f"Opening WhatsApp Web...{toast_extra}")
+        else:
+            self._show_toast(f"Launched WhatsApp Desktop!{toast_extra}")
+
+    def _share_via_telegram(self):
+        """Directly invokes Telegram Desktop native protocol, auto-copying media to clipboard."""
+        toast_extra = ""
+        if self.image_attachments:
+            img = QImage(str(self.image_attachments[0]))
+            if not img.isNull():
+                QApplication.clipboard().setImage(img)
+                toast_extra = " • Image ready to paste (Ctrl+V)"
+        elif self.attachments:
+            self._copy_files_to_clipboard()
+            toast_extra = " • Files ready to paste (Ctrl+V)"
+
+        text = urllib.parse.quote(self._get_full_text())
+        native_uri = f"tg://msg?text={text}"
+
+        launched = False
+        try:
+            launched = QDesktopServices.openUrl(QUrl(native_uri))
+        except Exception:
+            launched = False
+
+        if not launched:
+            # Fallback to web redirect only if native app failed to launch
+            web_uri = f"https://t.me/share/url?url=&text={text}"
+            QDesktopServices.openUrl(QUrl(web_uri))
+            self._show_toast(f"Opening Telegram Web...{toast_extra}")
+        else:
+            self._show_toast(f"Launched Telegram Desktop!{toast_extra}")
+
     def _share_via_email(self):
+        """Directly invokes native default email client via mailto:."""
         subject = urllib.parse.quote(self.note_title)
         body = urllib.parse.quote(self.plain_content)
         mailto_url = f"mailto:?subject={subject}&body={body}"
         QDesktopServices.openUrl(QUrl(mailto_url))
         self._show_toast("Launched Email client!")
 
-    def _share_via_whatsapp(self):
-        toast_extra = ""
-        if self.image_attachments:
-            img = QImage(str(self.image_attachments[0]))
-            if not img.isNull():
-                QApplication.clipboard().setImage(img)
-                toast_extra = " (Image copied: Ctrl+V in chat)"
-        elif self.attachments:
-            self._copy_files_to_clipboard()
-            toast_extra = " (File copied: Ctrl+V in chat)"
-
+    def _share_via_teams(self):
+        """Directly invokes Microsoft Teams chat."""
         text = urllib.parse.quote(self._get_full_text())
-        whatsapp_url = f"https://api.whatsapp.com/send?text={text}"
-        QDesktopServices.openUrl(QUrl(whatsapp_url))
-        self._show_toast(f"Opening WhatsApp...{toast_extra}")
+        native_uri = f"msteams:/l/chat/0/0?users=&message={text}"
+        launched = False
+        try:
+            launched = QDesktopServices.openUrl(QUrl(native_uri))
+        except Exception:
+            launched = False
 
-    def _share_via_telegram(self):
-        toast_extra = ""
-        if self.image_attachments:
-            img = QImage(str(self.image_attachments[0]))
-            if not img.isNull():
-                QApplication.clipboard().setImage(img)
-                toast_extra = " (Image copied: Ctrl+V in chat)"
-        elif self.attachments:
-            self._copy_files_to_clipboard()
-            toast_extra = " (File copied: Ctrl+V in chat)"
-
-        text = urllib.parse.quote(self._get_full_text())
-        telegram_url = f"https://t.me/share/url?url=&text={text}"
-        QDesktopServices.openUrl(QUrl(telegram_url))
-        self._show_toast(f"Opening Telegram...{toast_extra}")
+        if not launched:
+            web_uri = f"https://teams.microsoft.com/l/chat/0/0?message={text}"
+            QDesktopServices.openUrl(QUrl(web_uri))
+            self._show_toast("Opening Microsoft Teams Web...")
+        else:
+            self._show_toast("Launched Microsoft Teams Desktop!")
 
     def _share_via_facebook(self):
         text = urllib.parse.quote(self._get_full_text())
@@ -452,14 +728,13 @@ class ShareNoteDialog(QDialog):
         self._show_toast(f"{count} file{'s' if count > 1 else ''} copied! Paste (Ctrl+V) into chat or folder.")
 
     def _open_attachments_folder(self):
-        """Opens Windows Explorer with the note's first attachment selected."""
-        if self.attachments:
-            target = self.attachments[0]
-            if sys.platform == "win32":
-                subprocess.Popen(f'explorer /select,"{target}"')
-            else:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.parent)))
-            self._show_toast("Opened attachments location!")
+        """Opens Windows Explorer with the note's staged file or attachments selected."""
+        target = self.attachments[0] if self.attachments else self._stage_note_file()
+        if sys.platform == "win32":
+            subprocess.Popen(f'explorer /select,"{target}"')
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.parent)))
+        self._show_toast("Opened location in File Explorer!")
 
     def _export_zip_package(self):
         """Exports a standalone ZIP containing note markdown and all embedded media attachments."""
@@ -485,6 +760,18 @@ class ShareNoteDialog(QDialog):
             self._show_toast(f"Exported package to {Path(file_path).name}!")
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to export note package: {e}")
+
+    def _copy_rich_text(self):
+        """Copies multi-format MIME data (text + HTML + image) for Word, Outlook, and rich editors."""
+        mime = QMimeData()
+        mime.setText(self._get_full_text())
+        mime.setHtml(self._get_full_html())
+        if self.image_attachments:
+            img = QImage(str(self.image_attachments[0]))
+            if not img.isNull():
+                mime.setImageData(img)
+        QApplication.clipboard().setMimeData(mime)
+        self._show_toast("Rich formatted text copied to clipboard!")
 
     def _copy_markdown(self):
         QApplication.clipboard().setText(self._get_full_markdown())
