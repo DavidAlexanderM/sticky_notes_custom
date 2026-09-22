@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.6.9] - 2026-09-21
+
+### Fixed & Overhauled
+- **Bulletproof In-App Auto-Updater (`updater.py`):**
+  - Multi-tier feed resolution: Prioritizes public mirror GitHub Releases API (`PUBLIC_MIRROR_API_URL`) as Tier 1, delivering instant, real-time release metadata with zero GitHub token required.
+  - Implemented CDN cache-busting on raw manifest queries (`?nocache=timestamp` with `Cache-Control: no-cache`), eliminating edge caching lag.
+  - Added `NoAuthRedirectHandler` to safely strip `Authorization` headers when redirecting to external AWS S3 / `objects.githubusercontent.com` storage, preventing AWS S3 `400 Bad Request` errors.
+  - Added binary integrity validation: verifies file size (> 100 KB) and executable signatures (`b"MZ"` for setup `.exe`, `b"PK"` for `.zip`) before passing binaries to the installer.
+  - Refined silent self-updating script (`apply_update.bat`) with `/NORESTART /CLOSEAPPLICATIONS` and clean PID termination wait loop.
+- **Permanent Button Overlap Elimination (`UpdateDialog`):**
+  - Architecturally refactored from dynamic widget destruction (`_clear_card()`) to a native `QStackedWidget` system with 7 dedicated, isolated pages.
+  - Completely prevents buttons and layouts from overlapping during state transitions (Checking, Up to Date, Update Available, Downloading, Install Ready, Settings, Error).
+  - Added `get_active_buttons()` helper for seamless page-scoped testing and inspection.
+
 ## [1.6.8] - 2026-09-21
 
 ### Fixed & Improved

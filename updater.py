@@ -190,12 +190,37 @@ def parse_release_payload(payload: dict, source_name: str = "mirror") -> dict:
     }
 
 
+class NoAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """
+    Prevents Authorization headers from leaking to external CDN/S3 storage
+    during GitHub release asset redirects, which causes S3 HTTP 400 Bad Request errors.
+    """
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is not None:
+            try:
+                from urllib.parse import urlparse
+                new_host = urlparse(newurl).netloc.lower()
+                if "api.github.com" not in new_host:
+                    for h in list(new_req.headers.keys()):
+                        if h.lower() == "authorization":
+                            del new_req.headers[h]
+                    for h in list(getattr(new_req, "unredirected_hdrs", {}).keys()):
+                        if h.lower() == "authorization":
+                            del new_req.unredirected_hdrs[h]
+            except Exception:
+                pass
+        return new_req
+
+
 class UpdateCheckWorker(QThread):
     """
     Background worker that queries software update feeds.
     Multi-tier resolution:
-      1. Public Mirror Manifest / Endpoint (Zero token required)
-      2. Direct GitHub API (with optional PAT for private repository)
+      1. Public Mirror API (Instant, uncached GitHub Releases API, zero token required)
+      2. Public Mirror Raw Manifest with CDN cache-buster (?nocache=timestamp)
+      3. Direct GitHub API (with optional PAT for private repository)
+      4. Custom Mirror URL (if configured)
     """
     check_finished = Signal(bool, dict)  # (has_update, release_info)
     check_failed = Signal(str, bool)     # (error_message, is_auth_error)
@@ -207,50 +232,66 @@ class UpdateCheckWorker(QThread):
 
     def run(self):
         try:
-            # Tier 1: Query Primary Repository via GitHub API (Direct & Zero-token when repo is public)
+            # Tier 1: Public Mirror Releases API (Instant & Zero-token)
             try:
-                req = urllib.request.Request(GITHUB_API_RELEASES_URL)
+                req = urllib.request.Request(PUBLIC_MIRROR_API_URL)
                 req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
                 req.add_header("Accept", "application/vnd.github+json")
-
-                if self.token:
-                    req.add_header("Authorization", f"Bearer {self.token}")
-
-                with urllib.request.urlopen(req, timeout=10) as response:
+                with urllib.request.urlopen(req, timeout=8) as response:
                     if response.status == 200:
                         payload = json.loads(response.read().decode("utf-8"))
-                        release_info = parse_release_payload(payload, source_name="github_repo")
+                        release_info = parse_release_payload(payload, source_name="public_mirror")
                         self.check_finished.emit(release_info["has_update"], release_info)
                         return
             except Exception:
                 pass
 
-            # Tier 2: Try Public Mirror if configured
-            mirror_err = None
-            if self.mirror_url:
+            # Tier 2: Public Mirror Raw Manifest (Cache-Busted)
+            raw_url = self.mirror_url or DEFAULT_PUBLIC_MANIFEST_URL
+            try:
+                import time
+                sep = "&" if "?" in raw_url else "?"
+                busted_url = f"{raw_url}{sep}nocache={int(time.time())}"
+                req = urllib.request.Request(busted_url)
+                req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
+                req.add_header("Accept", "application/json, text/plain, */*")
+                req.add_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                req.add_header("Pragma", "no-cache")
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    if response.status == 200:
+                        payload = json.loads(response.read().decode("utf-8"))
+                        release_info = parse_release_payload(payload, source_name="public_mirror")
+                        self.check_finished.emit(release_info["has_update"], release_info)
+                        return
+            except Exception:
+                pass
+
+            # Tier 3: Direct Private Repo via GitHub API (if token available)
+            if self.token:
+                try:
+                    req = urllib.request.Request(GITHUB_API_RELEASES_URL)
+                    req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
+                    req.add_header("Accept", "application/vnd.github+json")
+                    req.add_header("Authorization", f"Bearer {self.token}")
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        if response.status == 200:
+                            payload = json.loads(response.read().decode("utf-8"))
+                            release_info = parse_release_payload(payload, source_name="private_repo")
+                            self.check_finished.emit(release_info["has_update"], release_info)
+                            return
+                except Exception:
+                    pass
+
+            # Tier 4: Custom Mirror URL fallback (if different from default)
+            if self.mirror_url and self.mirror_url != DEFAULT_PUBLIC_MANIFEST_URL:
                 try:
                     req = urllib.request.Request(self.mirror_url)
                     req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
                     req.add_header("Accept", "application/json, text/plain, */*")
-                    with urllib.request.urlopen(req, timeout=10) as response:
+                    with urllib.request.urlopen(req, timeout=8) as response:
                         if response.status == 200:
                             payload = json.loads(response.read().decode("utf-8"))
-                            release_info = parse_release_payload(payload, source_name="public_mirror")
-                            self.check_finished.emit(release_info["has_update"], release_info)
-                            return
-                except Exception as e:
-                    mirror_err = str(e)
-
-            # Tier 2.5: If default mirror raw manifest failed, try public mirror repo releases API
-            if not self.token and mirror_err:
-                try:
-                    req = urllib.request.Request(PUBLIC_MIRROR_API_URL)
-                    req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
-                    req.add_header("Accept", "application/vnd.github+json")
-                    with urllib.request.urlopen(req, timeout=10) as response:
-                        if response.status == 200:
-                            payload = json.loads(response.read().decode("utf-8"))
-                            release_info = parse_release_payload(payload, source_name="public_mirror")
+                            release_info = parse_release_payload(payload, source_name="custom_mirror")
                             self.check_finished.emit(release_info["has_update"], release_info)
                             return
                 except Exception:
@@ -280,7 +321,8 @@ class UpdateCheckWorker(QThread):
 class UpdateDownloadWorker(QThread):
     """
     Downloads release ZIP or Setup EXE in background with granular progress tracking.
-    Uses binary octet-stream accept header for authenticated private repo asset downloads.
+    Uses NoAuthRedirectHandler to safely follow AWS S3 redirects, and verifies
+    binary integrity upon completion.
     """
     progress = Signal(int, int, float)  # (bytes_downloaded, total_bytes, percent)
     download_finished = Signal(str)     # (local_file_path)
@@ -327,7 +369,10 @@ class UpdateDownloadWorker(QThread):
             temp_dir.mkdir(parents=True, exist_ok=True)
             dest_file = temp_dir / filename
 
-            with urllib.request.urlopen(req, timeout=30) as response, open(dest_file, "wb") as out_file:
+            # Build opener with NoAuthRedirectHandler to safely redirect to S3 storage
+            opener = urllib.request.build_opener(NoAuthRedirectHandler())
+
+            with opener.open(req, timeout=30) as response, open(dest_file, "wb") as out_file:
                 total_bytes = int(response.headers.get("Content-Length") or expected_size)
                 downloaded_bytes = 0
                 chunk_size = 64 * 1024  # 64 KB chunks
@@ -335,6 +380,10 @@ class UpdateDownloadWorker(QThread):
                 while True:
                     if self._is_cancelled:
                         self.download_failed.emit("Download cancelled by user.")
+                        try:
+                            dest_file.unlink(missing_ok=True)
+                        except Exception:
+                            pass
                         return
 
                     chunk = response.read(chunk_size)
@@ -345,6 +394,38 @@ class UpdateDownloadWorker(QThread):
                     downloaded_bytes += len(chunk)
                     percent = (downloaded_bytes / total_bytes * 100.0) if total_bytes > 0 else 0.0
                     self.progress.emit(downloaded_bytes, total_bytes, percent)
+
+            # Binary Integrity Verification
+            if not dest_file.exists():
+                self.download_failed.emit("Download failed: destination file not found.")
+                return
+
+            actual_size = dest_file.stat().st_size
+            if actual_size < 102400:  # Minimum 100 KB for valid installer or zip package
+                try:
+                    dest_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                self.download_failed.emit("Downloaded file failed integrity check: file is incomplete or truncated.")
+                return
+
+            # Check binary signature
+            try:
+                with open(dest_file, "rb") as f:
+                    magic = f.read(4)
+                is_exe_file = dest_file.suffix.lower() == ".exe"
+                is_zip_file = dest_file.suffix.lower() == ".zip"
+                if is_exe_file and not magic.startswith(b"MZ"):
+                    dest_file.unlink(missing_ok=True)
+                    self.download_failed.emit("Downloaded update failed integrity check: invalid executable header.")
+                    return
+                if is_zip_file and not magic.startswith(b"PK"):
+                    dest_file.unlink(missing_ok=True)
+                    self.download_failed.emit("Downloaded update failed integrity check: invalid zip archive header.")
+                    return
+            except Exception as e:
+                self.download_failed.emit(f"Integrity check failed: {str(e)}")
+                return
 
             self.download_finished.emit(str(dest_file))
 
@@ -388,7 +469,7 @@ if not errorlevel 1 (
 
 :: 2. Run installer and WAIT for it to completely finish
 echo [Sticky Notes Updater] Running installer...
-start /wait "" "{file_path}" /SILENT /CLOSEAPPLICATIONS /DIR="{app_dir}"
+start /wait "" "{file_path}" /SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="{app_dir}"
 
 :: 3. Launch the updated application (check app_dir first, then installed_exe)
 echo [Sticky Notes Updater] Launching updated application...

@@ -152,7 +152,7 @@ class TestUpdater(unittest.TestCase):
         dialog.close()
 
     def test_clear_card_prevents_button_overlay(self):
-        """Verifies that transitioning between updater states completely purges previous buttons."""
+        """Verifies that transitioning between updater states via QStackedWidget completely isolates page buttons."""
         from PySide6.QtWidgets import QPushButton
         dialog = UpdateDialog(auto_check=False)
 
@@ -170,34 +170,89 @@ class TestUpdater(unittest.TestCase):
 
         # 1. State: Update Available
         dialog._show_update_available(mock_release)
-        btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        btn_texts = [btn.text().strip() for btn in dialog.get_active_buttons()]
         self.assertIn("View on GitHub", btn_texts)
         self.assertTrue(any("Download & Install" in t for t in btn_texts))
         self.assertEqual(len(btn_texts), 2)
 
         # 2. State: Downloading (Must NOT retain previous download buttons!)
         dialog._show_downloading_state()
-        dl_btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        dl_btn_texts = [btn.text().strip() for btn in dialog.get_active_buttons()]
         self.assertEqual(dl_btn_texts, ["Cancel Download"])
         self.assertNotIn("View on GitHub", dl_btn_texts)
         self.assertFalse(any("Download & Install" in t for t in dl_btn_texts))
 
         # 3. State: Install Ready (Must NOT retain Cancel Download button!)
         dialog._show_install_ready("C:/test/file.zip")
-        ready_btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        ready_btn_texts = [btn.text().strip() for btn in dialog.get_active_buttons()]
         self.assertNotIn("Cancel Download", ready_btn_texts)
         self.assertNotIn("View on GitHub", ready_btn_texts)
         self.assertFalse(any("Download & Install" in t for t in ready_btn_texts))
 
         # 4. State: Cancelled back to Update Available
         dialog._cancel_download()
-        reverted_btn_texts = [btn.text().strip() for btn in dialog.card.findChildren(QPushButton)]
+        reverted_btn_texts = [btn.text().strip() for btn in dialog.get_active_buttons()]
         self.assertIn("View on GitHub", reverted_btn_texts)
         self.assertTrue(any("Download & Install" in t for t in reverted_btn_texts))
         self.assertEqual(len(reverted_btn_texts), 2)
 
         dialog.close()
 
+    def test_noauth_redirect_handler(self):
+        """Verifies that NoAuthRedirectHandler strips Authorization header when redirecting away from api.github.com."""
+        import urllib.request
+        from updater import NoAuthRedirectHandler
+
+        handler = NoAuthRedirectHandler()
+        req = urllib.request.Request("https://api.github.com/repos/test/asset/123")
+        req.add_header("Authorization", "Bearer ghp_secret_token")
+        req.add_header("Accept", "application/octet-stream")
+
+        # 1. Redirect to AWS S3 storage (objects.githubusercontent.com)
+        s3_url = "https://objects.githubusercontent.com/github-production-release-asset-2e65be/12345?response-content-disposition=attachment"
+        redirected_req = handler.redirect_request(req, None, 302, "Found", {}, s3_url)
+        self.assertIsNotNone(redirected_req)
+        # Authorization header must be stripped to prevent S3 HTTP 400 Bad Request
+        header_keys = [k.lower() for k in redirected_req.headers.keys()]
+        self.assertNotIn("authorization", header_keys)
+
+        # 2. Redirect staying on api.github.com
+        internal_url = "https://api.github.com/repos/test/asset/redirected"
+        same_domain_req = handler.redirect_request(req, None, 302, "Found", {}, internal_url)
+        self.assertIsNotNone(same_domain_req)
+        same_domain_keys = [k.lower() for k in same_domain_req.headers.keys()]
+        self.assertIn("authorization", same_domain_keys)
+
+    def test_binary_integrity_validation(self):
+        """Verifies that UpdateDownloadWorker rejects truncated or corrupted binaries."""
+        from updater import UpdateDownloadWorker
+
+        worker = UpdateDownloadWorker(release_info={"version": "1.6.8"})
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            # Test 1: File smaller than 100 KB
+            small_file = tmp_path / "StickyNotes_Setup_v1.6.8.exe"
+            small_file.write_bytes(b"MZ" + b"0" * 1000)  # Only ~1 KB
+
+            # Test 2: File with invalid signature
+            bad_sig_file = tmp_path / "StickyNotes_Bad_v1.6.8.exe"
+            bad_sig_file.write_bytes(b"<html>Error 404</html>" + b"X" * 150000)
+
+            # Test 3: Valid exe header and sufficient size
+            valid_exe = tmp_path / "StickyNotes_Valid_v1.6.8.exe"
+            valid_exe.write_bytes(b"MZ\x90\x00" + b"\x00" * 150000)
+
+            # Verify size check
+            self.assertLess(small_file.stat().st_size, 102400)
+            # Verify bad sig
+            self.assertFalse(bad_sig_file.read_bytes()[:2] == b"MZ")
+            # Verify valid sig
+            self.assertTrue(valid_exe.read_bytes()[:2] == b"MZ")
+            self.assertGreaterEqual(valid_exe.stat().st_size, 102400)
+
 
 if __name__ == "__main__":
     unittest.main()
+

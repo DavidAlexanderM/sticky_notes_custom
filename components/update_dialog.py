@@ -2,6 +2,7 @@
 update_dialog.py - Comprehensive In-App Software Update Center for Sticky Notes.
 Features live GitHub API querying, private repository token authentication,
 markdown changelog preview, chunked download progress, and Windows self-restart.
+Uses QStackedWidget to permanently eliminate layout overlap during state transitions.
 """
 
 import sys
@@ -10,9 +11,9 @@ from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QWidget, QFrame, QProgressBar,
-    QScrollArea, QLineEdit, QMessageBox, QTextBrowser
+    QLineEdit, QMessageBox, QTextBrowser, QStackedWidget
 )
-from PySide6.QtGui import QDesktopServices, QCursor, QFont, QCloseEvent
+from PySide6.QtGui import QDesktopServices, QCursor
 
 try:
     from ..version import __version__, HOMEPAGE
@@ -38,11 +39,12 @@ except ImportError:
 
 class UpdateDialog(QDialog):
     """
-    Modal software updater dialog supporting both public and private GitHub repositories.
+    Modal software updater dialog supporting both public mirror and private GitHub repositories.
+    Uses QStackedWidget for glitch-free, non-overlapping state transitions.
     """
     def __init__(self, parent=None, auto_check: bool = True):
         super().__init__(parent)
-        self.setWindowTitle(f"Sticky Notes - Check for Updates")
+        self.setWindowTitle("Sticky Notes - Check for Updates")
         self.resize(580, 520)
         self.setMinimumSize(500, 460)
 
@@ -104,7 +106,7 @@ class UpdateDialog(QDialog):
 
         layout.addWidget(header_frame)
 
-        # Central Dynamic Card
+        # Central Dynamic Card (Houses QStackedWidget)
         self.card = QFrame(self)
         self.card.setObjectName("CentralCard")
         self.card.setStyleSheet(f"""
@@ -117,6 +119,13 @@ class UpdateDialog(QDialog):
         self.card_layout = QVBoxLayout(self.card)
         self.card_layout.setContentsMargins(16, 16, 16, 16)
         self.card_layout.setSpacing(12)
+
+        # QStackedWidget contains dedicated, isolated pages
+        self.stack = QStackedWidget(self.card)
+        self.card_layout.addWidget(self.stack)
+
+        self._build_stack_pages()
+
         layout.addWidget(self.card, 1)
 
         # Bottom row
@@ -142,76 +151,62 @@ class UpdateDialog(QDialog):
 
         self._show_checking_state()
 
-    def _clear_card(self):
-        # 1. Explicitly detach and delete all child widgets inside self.card
-        for child in self.card.findChildren(QWidget):
-            child.setParent(None)
-            child.deleteLater()
+    def _build_stack_pages(self):
+        """Constructs static pages inside the stacked widget."""
+        # Page 0: Checking
+        self.page_checking = QWidget(self.stack)
+        p0_layout = QVBoxLayout(self.page_checking)
+        p0_layout.setContentsMargins(0, 20, 0, 0)
+        self.checking_lbl = QLabel("🔍 Checking GitHub for updates...", self.page_checking)
+        self.checking_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.checking_lbl.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {self.pal['text_primary']}; margin-top: 40px;")
+        p0_layout.addWidget(self.checking_lbl)
+        p0_layout.addStretch()
+        self.stack.addWidget(self.page_checking)
 
-        # 2. Recursively clear any nested layouts and remaining items
-        def _purge_layout(l):
-            if l is None:
-                return
-            while l.count():
-                item = l.takeAt(0)
-                sub = item.layout()
-                if sub is not None:
-                    _purge_layout(sub)
-                w = item.widget()
-                if w is not None:
-                    w.setParent(None)
-                    w.deleteLater()
+        # Page 1: Up to Date
+        self.page_up_to_date = QWidget(self.stack)
+        p1_layout = QVBoxLayout(self.page_up_to_date)
+        p1_layout.setContentsMargins(0, 10, 0, 0)
+        p1_layout.setSpacing(8)
+        
+        uptodate_icon = QLabel(self.page_up_to_date)
+        uptodate_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        uptodate_icon.setPixmap(get_themed_icon("check", role="accent", theme=self.theme, size=36).pixmap(36, 36))
+        p1_layout.addWidget(uptodate_icon)
 
-        _purge_layout(self.card_layout)
+        uptodate_title = QLabel("You're on the latest version!", self.page_up_to_date)
+        uptodate_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        uptodate_title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
+        p1_layout.addWidget(uptodate_title)
 
-    # --- View States ---
+        uptodate_desc = QLabel(f"Sticky Notes v{__version__} is currently up to date.", self.page_up_to_date)
+        uptodate_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        uptodate_desc.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']};")
+        p1_layout.addWidget(uptodate_desc)
+        p1_layout.addStretch()
 
-    def _show_checking_state(self):
-        self._clear_card()
-        lbl = QLabel("🔍 Checking GitHub for updates...", self.card)
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {self.pal['text_primary']}; margin-top: 40px;")
-        self.card_layout.addWidget(lbl)
-        self.card_layout.addStretch()
-
-    def _show_up_to_date(self):
-        self._clear_card()
-        icon_lbl = QLabel(self.card)
-        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_lbl.setPixmap(get_themed_icon("check", role="accent", theme=self.theme, size=36).pixmap(36, 36))
-        self.card_layout.addWidget(icon_lbl)
-
-        title = QLabel("You're on the latest version!", self.card)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
-        self.card_layout.addWidget(title)
-
-        desc = QLabel(f"Sticky Notes v{__version__} is currently up to date.", self.card)
-        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']};")
-        self.card_layout.addWidget(desc)
-
-        self.card_layout.addStretch()
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        check_again_btn = QPushButton(" Check Again", self.card)
+        p1_btn_row = QHBoxLayout()
+        p1_btn_row.addStretch()
+        check_again_btn = QPushButton(" Check Again", self.page_up_to_date)
         check_again_btn.setIcon(get_themed_icon("clock", role="btn_text", theme=self.theme, size=15))
         check_again_btn.setObjectName("SelectModeButton")
         check_again_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         check_again_btn.clicked.connect(self._start_check)
-        btn_row.addWidget(check_again_btn)
-        btn_row.addStretch()
-        self.card_layout.addLayout(btn_row)
+        p1_btn_row.addWidget(check_again_btn)
+        p1_btn_row.addStretch()
+        p1_layout.addLayout(p1_btn_row)
+        self.stack.addWidget(self.page_up_to_date)
 
-    def _show_update_available(self, release_info: dict):
-        self._clear_card()
-        self.release_info = release_info
+        # Page 2: Update Available
+        self.page_available = QWidget(self.stack)
+        p2_layout = QVBoxLayout(self.page_available)
+        p2_layout.setContentsMargins(0, 0, 0, 0)
+        p2_layout.setSpacing(10)
 
-        # Top banner
         top_row = QHBoxLayout()
-        badge = QLabel(f" v{release_info['version']} Available! ", self.card)
-        badge.setStyleSheet(f"""
+        self.avail_badge = QLabel(self.page_available)
+        self.avail_badge.setStyleSheet(f"""
             background-color: {self.pal['accent']};
             color: {self.pal['accent_text']};
             border-radius: 6px;
@@ -220,65 +215,54 @@ class UpdateDialog(QDialog):
             padding: 4px 8px;
             border: none;
         """)
-        top_row.addWidget(badge)
+        top_row.addWidget(self.avail_badge)
 
-        date_str = release_info.get("published_at", "")[:10]
-        if date_str:
-            date_lbl = QLabel(f"Released: {date_str}", self.card)
-            date_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']}; border: none; background: transparent;")
-            top_row.addWidget(date_lbl)
-
+        self.avail_date_lbl = QLabel(self.page_available)
+        self.avail_date_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']}; border: none; background: transparent;")
+        top_row.addWidget(self.avail_date_lbl)
         top_row.addStretch()
-        self.card_layout.addLayout(top_row)
+        p2_layout.addLayout(top_row)
 
-        # Release Notes Browser
-        notes_browser = QTextBrowser(self.card)
-        notes_browser.setOpenExternalLinks(True)
-        css = get_markdown_preview_css(self.theme)
-        
-        try:
-            import markdown2
-            body_html = markdown2.markdown(release_info.get("body", "No release notes provided."))
-        except Exception:
-            body_html = f"<pre>{release_info.get('body', '')}</pre>"
+        self.notes_browser = QTextBrowser(self.page_available)
+        self.notes_browser.setOpenExternalLinks(True)
+        self.notes_browser.setMinimumHeight(130)
+        self.notes_browser.setStyleSheet(f"QTextBrowser {{ border: 1px solid {self.pal['border']}; border-radius: 8px; background-color: {self.pal['bg_main']}; }}")
+        p2_layout.addWidget(self.notes_browser, 1)
 
-        notes_browser.setHtml(f"<html><head>{css}</head><body>{body_html}</body></html>")
-        notes_browser.setMinimumHeight(130)
-        notes_browser.setStyleSheet(f"QTextBrowser {{ border: 1px solid {self.pal['border']}; border-radius: 8px; background-color: {self.pal['bg_main']}; }}")
-        self.card_layout.addWidget(notes_browser, 1)
+        p2_action_row = QHBoxLayout()
+        p2_action_row.setContentsMargins(0, 4, 0, 0)
+        p2_action_row.setSpacing(10)
 
-        # Action row
-        action_row = QHBoxLayout()
-        action_row.setContentsMargins(0, 8, 0, 0)
-        action_row.setSpacing(10)
-        
-        gh_btn = QPushButton(" View on GitHub", self.card)
-        gh_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=self.theme, size=15))
-        gh_btn.setObjectName("SelectModeButton")
-        gh_btn.setFixedHeight(34)
-        gh_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        gh_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(release_info.get("html_url", HOMEPAGE))))
-        action_row.addWidget(gh_btn)
+        self.avail_gh_btn = QPushButton(" View on GitHub", self.page_available)
+        self.avail_gh_btn.setIcon(get_themed_icon("external_link", role="btn_text", theme=self.theme, size=15))
+        self.avail_gh_btn.setObjectName("SelectModeButton")
+        self.avail_gh_btn.setFixedHeight(34)
+        self.avail_gh_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.avail_gh_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.release_info.get("html_url", HOMEPAGE) if self.release_info else HOMEPAGE)))
+        p2_action_row.addWidget(self.avail_gh_btn)
 
-        action_row.addStretch()
+        p2_action_row.addStretch()
 
-        download_btn = QPushButton("⬇ Download & Install Update", self.card)
-        download_btn.setObjectName("NewNoteButton")
-        download_btn.setFixedHeight(34)
-        download_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        download_btn.clicked.connect(self._start_download)
-        action_row.addWidget(download_btn)
+        self.avail_dl_btn = QPushButton("⬇ Download & Install Update", self.page_available)
+        self.avail_dl_btn.setObjectName("NewNoteButton")
+        self.avail_dl_btn.setFixedHeight(34)
+        self.avail_dl_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.avail_dl_btn.clicked.connect(self._start_download)
+        p2_action_row.addWidget(self.avail_dl_btn)
+        p2_layout.addLayout(p2_action_row)
+        self.stack.addWidget(self.page_available)
 
-        self.card_layout.addLayout(action_row)
+        # Page 3: Downloading
+        self.page_downloading = QWidget(self.stack)
+        p3_layout = QVBoxLayout(self.page_downloading)
+        p3_layout.setContentsMargins(0, 10, 0, 0)
+        p3_layout.setSpacing(12)
 
-    def _show_downloading_state(self):
-        self._clear_card()
-        
-        title = QLabel(f"Downloading Sticky Notes v{self.release_info.get('version')}...", self.card)
-        title.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {self.pal['text_primary']};")
-        self.card_layout.addWidget(title)
+        self.dl_title_lbl = QLabel("Downloading Sticky Notes...", self.page_downloading)
+        self.dl_title_lbl.setStyleSheet(f"font-size: 14px; font-weight: 700; color: {self.pal['text_primary']};")
+        p3_layout.addWidget(self.dl_title_lbl)
 
-        self.progress_bar = QProgressBar(self.card)
+        self.progress_bar = QProgressBar(self.page_downloading)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setStyleSheet(f"""
@@ -295,41 +279,232 @@ class UpdateDialog(QDialog):
                 border-radius: 5px;
             }}
         """)
-        self.card_layout.addWidget(self.progress_bar)
+        p3_layout.addWidget(self.progress_bar)
 
-        self.download_meta_lbl = QLabel("Connecting...", self.card)
+        self.download_meta_lbl = QLabel("Connecting...", self.page_downloading)
         self.download_meta_lbl.setStyleSheet(f"font-size: 11px; color: {self.pal['text_muted']};")
-        self.card_layout.addWidget(self.download_meta_lbl)
+        p3_layout.addWidget(self.download_meta_lbl)
+        p3_layout.addStretch()
 
-        self.card_layout.addStretch()
-
-        cancel_row = QHBoxLayout()
-        cancel_row.setContentsMargins(0, 8, 0, 0)
-        cancel_row.addStretch()
-        cancel_btn = QPushButton("Cancel Download", self.card)
+        p3_cancel_row = QHBoxLayout()
+        p3_cancel_row.setContentsMargins(0, 8, 0, 0)
+        p3_cancel_row.addStretch()
+        cancel_btn = QPushButton("Cancel Download", self.page_downloading)
         cancel_btn.setObjectName("SelectModeButton")
         cancel_btn.setFixedHeight(34)
         cancel_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         cancel_btn.clicked.connect(self._cancel_download)
-        cancel_row.addWidget(cancel_btn)
-        self.card_layout.addLayout(cancel_row)
+        p3_cancel_row.addWidget(cancel_btn)
+        p3_layout.addLayout(p3_cancel_row)
+        self.stack.addWidget(self.page_downloading)
+
+        # Page 4: Install Ready
+        self.page_install_ready = QWidget(self.stack)
+        self.p4_layout = QVBoxLayout(self.page_install_ready)
+        self.p4_layout.setContentsMargins(0, 10, 0, 0)
+        self.p4_layout.setSpacing(8)
+
+        ready_icon = QLabel(self.page_install_ready)
+        ready_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ready_icon.setPixmap(get_themed_icon("check", role="accent", theme=self.theme, size=36).pixmap(36, 36))
+        self.p4_layout.addWidget(ready_icon)
+
+        ready_title = QLabel("Update Downloaded & Ready!", self.page_install_ready)
+        ready_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ready_title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
+        self.p4_layout.addWidget(ready_title)
+
+        self.install_msg_lbl = QLabel(self.page_install_ready)
+        self.install_msg_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.install_msg_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']};")
+        self.install_msg_lbl.setWordWrap(True)
+        self.p4_layout.addWidget(self.install_msg_lbl)
+
+        self.countdown_lbl = QLabel(self.page_install_ready)
+        self.countdown_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.countdown_lbl.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {self.pal['accent']}; margin-top: 4px;")
+        self.p4_layout.addWidget(self.countdown_lbl)
+
+        self.p4_layout.addStretch()
+
+        self.install_btn_row = QHBoxLayout()
+        self.install_btn_row.setContentsMargins(0, 8, 0, 0)
+        self.install_btn_row.setSpacing(10)
+        self.p4_layout.addLayout(self.install_btn_row)
+        self.stack.addWidget(self.page_install_ready)
+
+        # Page 5: Settings / Configuration
+        self.page_settings = QWidget(self.stack)
+        p5_layout = QVBoxLayout(self.page_settings)
+        p5_layout.setContentsMargins(0, 0, 0, 0)
+        p5_layout.setSpacing(8)
+
+        settings_title = QLabel("⚙️ Software Update Configuration", self.page_settings)
+        settings_title.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {self.pal['text_primary']};")
+        p5_layout.addWidget(settings_title)
+
+        mirror_header = QLabel("<b>🌐 Public Releases Mirror Feed</b>", self.page_settings)
+        mirror_header.setStyleSheet(f"font-size: 13px; color: {self.pal['text_primary']};")
+        p5_layout.addWidget(mirror_header)
+
+        mirror_info = QLabel("Allows checking for and downloading updates without needing a personal GitHub token.", self.page_settings)
+        mirror_info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
+        mirror_info.setWordWrap(True)
+        p5_layout.addWidget(mirror_info)
+
+        self.mirror_input = QLineEdit(self.page_settings)
+        self.mirror_input.setPlaceholderText("Mirror manifest URL (e.g. https://.../version.json)")
+        self.mirror_input.setText(get_stored_mirror_url())
+        self.mirror_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {self.pal['input_bg']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['input_border']};
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-family: monospace;
+                font-size: 11px;
+            }}
+        """)
+        p5_layout.addWidget(self.mirror_input)
+
+        mirror_btn_row = QHBoxLayout()
+        test_mirror_btn = QPushButton("📡 Test Connection", self.page_settings)
+        test_mirror_btn.setObjectName("SelectModeButton")
+        test_mirror_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        test_mirror_btn.clicked.connect(self._test_feed_connection)
+        mirror_btn_row.addWidget(test_mirror_btn)
+
+        reset_mirror_btn = QPushButton("↺ Default Mirror", self.page_settings)
+        reset_mirror_btn.setObjectName("SelectModeButton")
+        reset_mirror_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        reset_mirror_btn.clicked.connect(lambda: self.mirror_input.setText(DEFAULT_PUBLIC_MANIFEST_URL))
+        mirror_btn_row.addWidget(reset_mirror_btn)
+        mirror_btn_row.addStretch()
+        p5_layout.addLayout(mirror_btn_row)
+
+        sep = QFrame(self.page_settings)
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color: {self.pal['border']}; margin: 4px 0;")
+        p5_layout.addWidget(sep)
+
+        token_header = QLabel("<b>🔒 Private GitHub Access Token (Optional)</b>", self.page_settings)
+        token_header.setStyleSheet(f"font-size: 13px; color: {self.pal['text_primary']};")
+        p5_layout.addWidget(token_header)
+
+        token_info = QLabel("Only required if querying the private repository directly instead of the public mirror.", self.page_settings)
+        token_info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
+        token_info.setWordWrap(True)
+        p5_layout.addWidget(token_info)
+
+        self.token_input = QLineEdit(self.page_settings)
+        self.token_input.setPlaceholderText("Paste GitHub Personal Access Token (ghp_... or github_pat_...)")
+        self.token_input.setEchoMode(QLineEdit.EchoMode.Password)
+        existing = get_stored_github_token()
+        if existing:
+            self.token_input.setText(existing)
+        self.token_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {self.pal['input_bg']};
+                color: {self.pal['text_primary']};
+                border: 1px solid {self.pal['input_border']};
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-family: monospace;
+            }}
+        """)
+        p5_layout.addWidget(self.token_input)
+
+        row = QHBoxLayout()
+        link_btn = QPushButton("🌐 Generate Token on GitHub", self.page_settings)
+        link_btn.setObjectName("SelectModeButton")
+        link_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        link_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/settings/tokens?type=beta")))
+        row.addWidget(link_btn)
+        row.addStretch()
+
+        save_btn = QPushButton("💾 Save Settings & Check", self.page_settings)
+        save_btn.setObjectName("NewNoteButton")
+        save_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        save_btn.clicked.connect(self._save_token_and_check)
+        row.addWidget(save_btn)
+        p5_layout.addLayout(row)
+        p5_layout.addStretch()
+        self.stack.addWidget(self.page_settings)
+
+        # Page 6: Error
+        self.page_error = QWidget(self.stack)
+        p6_layout = QVBoxLayout(self.page_error)
+        p6_layout.setContentsMargins(0, 20, 0, 0)
+        p6_layout.setSpacing(10)
+
+        self.error_title_lbl = QLabel(self.page_error)
+        self.error_title_lbl.setStyleSheet("font-size: 15px; font-weight: 700; color: #E57373;")
+        p6_layout.addWidget(self.error_title_lbl)
+
+        self.error_desc_lbl = QLabel(self.page_error)
+        self.error_desc_lbl.setStyleSheet(f"font-size: 12px; color: {self.pal['text_primary']};")
+        self.error_desc_lbl.setWordWrap(True)
+        p6_layout.addWidget(self.error_desc_lbl)
+        p6_layout.addStretch()
+
+        p6_row = QHBoxLayout()
+        p6_row.addStretch()
+        retry_btn = QPushButton("Retry Check", self.page_error)
+        retry_btn.setObjectName("SelectModeButton")
+        retry_btn.clicked.connect(self._start_check)
+        p6_row.addWidget(retry_btn)
+        p6_layout.addLayout(p6_row)
+        self.stack.addWidget(self.page_error)
+
+    def _clear_card(self):
+        """Maintained for test and caller compatibility; QStackedWidget natively handles clean state switching."""
+        pass
+
+    def get_active_buttons(self) -> list:
+        """Returns the list of QPushButtons on the currently displayed page."""
+        cur = self.stack.currentWidget()
+        return cur.findChildren(QPushButton) if cur else []
+
+    # --- View State Transitions ---
+
+    def _show_checking_state(self):
+        self.stack.setCurrentWidget(self.page_checking)
+
+    def _show_up_to_date(self):
+        self.stack.setCurrentWidget(self.page_up_to_date)
+
+    def _show_update_available(self, release_info: dict):
+        self.release_info = release_info
+
+        ver = release_info.get("version", "Unknown")
+        self.avail_badge.setText(f" v{ver} Available! ")
+
+        date_str = release_info.get("published_at", "")[:10]
+        self.avail_date_lbl.setText(f"Released: {date_str}" if date_str else "")
+
+        css = get_markdown_preview_css(self.theme)
+        try:
+            import markdown2
+            body_html = markdown2.markdown(release_info.get("body", "No release notes provided."))
+        except Exception:
+            body_html = f"<pre>{release_info.get('body', '')}</pre>"
+
+        self.notes_browser.setHtml(f"<html><head>{css}</head><body>{body_html}</body></html>")
+        self.stack.setCurrentWidget(self.page_available)
+
+    def _show_downloading_state(self):
+        ver = self.release_info.get("version", "") if self.release_info else ""
+        self.dl_title_lbl.setText(f"Downloading Sticky Notes v{ver}..." if ver else "Downloading update...")
+        self.progress_bar.setValue(0)
+        self.download_meta_lbl.setText("Connecting to server...")
+        self.stack.setCurrentWidget(self.page_downloading)
 
     def _show_install_ready(self, zip_path: str):
-        self._clear_card()
         self.downloaded_zip_path = zip_path
         file_path = Path(zip_path)
         is_exe = file_path.suffix.lower() == ".exe"
         is_frozen = getattr(sys, 'frozen', False)
-
-        icon_lbl = QLabel(self.card)
-        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_lbl.setPixmap(get_themed_icon("check", role="accent", theme=self.theme, size=36).pixmap(36, 36))
-        self.card_layout.addWidget(icon_lbl)
-
-        title = QLabel("Update Downloaded & Ready!", self.card)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {self.pal['text_primary']};")
-        self.card_layout.addWidget(title)
 
         if is_frozen:
             msg_text = "Sticky Notes will close, install the updated files, and automatically relaunch the newest version."
@@ -338,69 +513,66 @@ class UpdateDialog(QDialog):
         else:
             msg_text = f"The update archive is ready at:\n{file_path}\n\nYou are running Sticky Notes in Python development mode."
 
-        msg = QLabel(msg_text, self.card)
-        msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        msg.setStyleSheet(f"font-size: 12px; color: {self.pal['text_secondary']};")
-        msg.setWordWrap(True)
-        self.card_layout.addWidget(msg)
+        self.install_msg_lbl.setText(msg_text)
+
+        # Clear previous dynamic buttons in install_btn_row
+        while self.install_btn_row.count():
+            item = self.install_btn_row.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        self.install_btn_row.addStretch()
 
         if is_frozen:
             self.auto_restart_seconds = 3
-            self.countdown_lbl = QLabel(f"Restarting to apply update in {self.auto_restart_seconds} seconds...", self.card)
-            self.countdown_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.countdown_lbl.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {self.pal['accent']}; margin-top: 4px;")
-            self.card_layout.addWidget(self.countdown_lbl)
+            self.countdown_lbl.setText(f"Restarting to apply update in {self.auto_restart_seconds} seconds...")
+            self.countdown_lbl.setVisible(True)
 
             if not self.restart_timer:
                 self.restart_timer = QTimer(self)
                 self.restart_timer.timeout.connect(self._on_restart_timer_tick)
             self.restart_timer.start(1000)
 
-        self.card_layout.addStretch()
-
-        btn_row = QHBoxLayout()
-        btn_row.setContentsMargins(0, 8, 0, 0)
-        btn_row.setSpacing(10)
-        btn_row.addStretch()
-
-        if is_frozen:
-            restart_btn = QPushButton("🚀 Restart Now", self.card)
+            restart_btn = QPushButton("🚀 Restart Now", self.page_install_ready)
             restart_btn.setObjectName("NewNoteButton")
             restart_btn.setFixedHeight(34)
             restart_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             restart_btn.clicked.connect(self._apply_update)
-            btn_row.addWidget(restart_btn)
+            self.install_btn_row.addWidget(restart_btn)
 
-            cancel_auto_btn = QPushButton("Cancel Auto-Restart", self.card)
+            cancel_auto_btn = QPushButton("Cancel Auto-Restart", self.page_install_ready)
             cancel_auto_btn.setObjectName("SelectModeButton")
             cancel_auto_btn.setFixedHeight(34)
             cancel_auto_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             cancel_auto_btn.clicked.connect(self._cancel_auto_restart)
-            btn_row.addWidget(cancel_auto_btn)
+            self.install_btn_row.addWidget(cancel_auto_btn)
         elif is_exe:
-            run_installer_btn = QPushButton("🚀 Run Installer Now", self.card)
+            self.countdown_lbl.setVisible(False)
+            run_installer_btn = QPushButton("🚀 Run Installer Now", self.page_install_ready)
             run_installer_btn.setObjectName("NewNoteButton")
             run_installer_btn.setFixedHeight(34)
             run_installer_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             run_installer_btn.clicked.connect(self._apply_update)
-            btn_row.addWidget(run_installer_btn)
+            self.install_btn_row.addWidget(run_installer_btn)
 
-            open_folder_btn = QPushButton("📂 Open Folder", self.card)
+            open_folder_btn = QPushButton("📂 Open Folder", self.page_install_ready)
             open_folder_btn.setObjectName("SelectModeButton")
             open_folder_btn.setFixedHeight(34)
             open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent))))
-            btn_row.addWidget(open_folder_btn)
+            self.install_btn_row.addWidget(open_folder_btn)
         else:
-            open_folder_btn = QPushButton("📂 Open Downloaded Package", self.card)
+            self.countdown_lbl.setVisible(False)
+            open_folder_btn = QPushButton("📂 Open Downloaded Package", self.page_install_ready)
             open_folder_btn.setObjectName("NewNoteButton")
             open_folder_btn.setFixedHeight(34)
             open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             open_folder_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent))))
-            btn_row.addWidget(open_folder_btn)
+            self.install_btn_row.addWidget(open_folder_btn)
 
-        btn_row.addStretch()
-        self.card_layout.addLayout(btn_row)
+        self.install_btn_row.addStretch()
+        self.stack.setCurrentWidget(self.page_install_ready)
 
     def _on_restart_timer_tick(self):
         self.auto_restart_seconds -= 1
@@ -419,127 +591,19 @@ class UpdateDialog(QDialog):
             self.countdown_lbl.setText("Auto-restart cancelled. Click 'Restart Now' when you are ready.")
 
     def _show_error_or_auth(self, error_msg: str, is_auth: bool):
-        self._clear_card()
-
-        title = QLabel("🔒 GitHub Authentication Required" if is_auth else "⚠️ Update Check Error", self.card)
-        title.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {'#E57373' if not is_auth else self.pal['accent']};")
-        self.card_layout.addWidget(title)
-
-        desc = QLabel(error_msg, self.card)
-        desc.setStyleSheet(f"font-size: 12px; color: {self.pal['text_primary']};")
-        desc.setWordWrap(True)
-        self.card_layout.addWidget(desc)
-
         if is_auth:
-            self._append_token_form()
+            self._show_token_section()
         else:
-            self.card_layout.addStretch()
-            retry_btn = QPushButton("Retry Check", self.card)
-            retry_btn.setObjectName("SelectModeButton")
-            retry_btn.clicked.connect(self._start_check)
-            self.card_layout.addWidget(retry_btn, alignment=Qt.AlignmentFlag.AlignRight)
-
-    def _append_token_form(self):
-        # Section 1: Public Mirror Feed URL
-        mirror_header = QLabel("<b>🌐 Public Releases Mirror Feed</b>", self.card)
-        mirror_header.setStyleSheet(f"font-size: 13px; color: {self.pal['text_primary']};")
-        self.card_layout.addWidget(mirror_header)
-
-        mirror_info = QLabel("Allows checking for and downloading updates without needing a personal GitHub token.", self.card)
-        mirror_info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
-        mirror_info.setWordWrap(True)
-        self.card_layout.addWidget(mirror_info)
-
-        self.mirror_input = QLineEdit(self.card)
-        self.mirror_input.setPlaceholderText("Mirror manifest URL (e.g. https://.../version.json)")
-        self.mirror_input.setText(get_stored_mirror_url())
-        self.mirror_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: {self.pal['input_bg']};
-                color: {self.pal['text_primary']};
-                border: 1px solid {self.pal['input_border']};
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-family: monospace;
-                font-size: 11px;
-            }}
-        """)
-        self.card_layout.addWidget(self.mirror_input)
-
-        mirror_btn_row = QHBoxLayout()
-        test_mirror_btn = QPushButton("📡 Test Connection", self.card)
-        test_mirror_btn.setObjectName("SelectModeButton")
-        test_mirror_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        test_mirror_btn.clicked.connect(self._test_feed_connection)
-        mirror_btn_row.addWidget(test_mirror_btn)
-
-        reset_mirror_btn = QPushButton("↺ Default Mirror", self.card)
-        reset_mirror_btn.setObjectName("SelectModeButton")
-        reset_mirror_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        reset_mirror_btn.clicked.connect(lambda: self.mirror_input.setText(DEFAULT_PUBLIC_MANIFEST_URL))
-        mirror_btn_row.addWidget(reset_mirror_btn)
-
-        mirror_btn_row.addStretch()
-        self.card_layout.addLayout(mirror_btn_row)
-
-        # Separator
-        sep = QFrame(self.card)
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {self.pal['border']}; margin: 4px 0;")
-        self.card_layout.addWidget(sep)
-
-        # Section 2: GitHub Personal Access Token
-        token_header = QLabel("<b>🔒 Private GitHub Access Token (Optional)</b>", self.card)
-        token_header.setStyleSheet(f"font-size: 13px; color: {self.pal['text_primary']};")
-        self.card_layout.addWidget(token_header)
-
-        token_info = QLabel("Only required if querying the private repository directly instead of the public mirror.", self.card)
-        token_info.setStyleSheet(f"font-size: 11px; color: {self.pal['text_secondary']};")
-        token_info.setWordWrap(True)
-        self.card_layout.addWidget(token_info)
-
-        self.token_input = QLineEdit(self.card)
-        self.token_input.setPlaceholderText("Paste GitHub Personal Access Token (ghp_... or github_pat_...)")
-        self.token_input.setEchoMode(QLineEdit.EchoMode.Password)
-        existing = get_stored_github_token()
-        if existing:
-            self.token_input.setText(existing)
-        self.token_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: {self.pal['input_bg']};
-                color: {self.pal['text_primary']};
-                border: 1px solid {self.pal['input_border']};
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-family: monospace;
-            }}
-        """)
-        self.card_layout.addWidget(self.token_input)
-
-        row = QHBoxLayout()
-        link_btn = QPushButton("🌐 Generate Token on GitHub", self.card)
-        link_btn.setObjectName("SelectModeButton")
-        link_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        link_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/settings/tokens?type=beta")))
-        row.addWidget(link_btn)
-
-        row.addStretch()
-
-        save_btn = QPushButton("💾 Save Settings & Check", self.card)
-        save_btn.setObjectName("NewNoteButton")
-        save_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        save_btn.clicked.connect(self._save_token_and_check)
-        row.addWidget(save_btn)
-
-        self.card_layout.addLayout(row)
-        self.card_layout.addStretch()
+            self.error_title_lbl.setText("⚠️ Update Check Error")
+            self.error_desc_lbl.setText(error_msg)
+            self.stack.setCurrentWidget(self.page_error)
 
     def _show_token_section(self):
-        self._clear_card()
-        title = QLabel("⚙️ Software Update Configuration", self.card)
-        title.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {self.pal['text_primary']};")
-        self.card_layout.addWidget(title)
-        self._append_token_form()
+        self.mirror_input.setText(get_stored_mirror_url())
+        tok = get_stored_github_token()
+        if tok:
+            self.token_input.setText(tok)
+        self.stack.setCurrentWidget(self.page_settings)
 
     def _test_feed_connection(self):
         url = self.mirror_input.text().strip() if hasattr(self, 'mirror_input') else ""
@@ -548,12 +612,12 @@ class UpdateDialog(QDialog):
             return
 
         import urllib.request
+        import json
         try:
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "StickyNotesApp-AutoUpdater")
             with urllib.request.urlopen(req, timeout=6) as resp:
                 if resp.status == 200:
-                    import json
                     data = json.loads(resp.read().decode("utf-8"))
                     version_str = data.get("version") or data.get("tag_name", "Unknown")
                     QMessageBox.information(
@@ -567,7 +631,7 @@ class UpdateDialog(QDialog):
             QMessageBox.critical(
                 self,
                 "Mirror Unreachable",
-                f"Could not connect to mirror at:\n{url}\n\nError: {str(e)}\n\nNote: If the public mirror repository has not yet been populated, you can configure a GitHub PAT or wait for the initial GitHub Actions release."
+                f"Could not connect to mirror at:\n{url}\n\nError: {str(e)}"
             )
 
     # --- Actions ---
@@ -619,7 +683,6 @@ class UpdateDialog(QDialog):
             return
         self._show_downloading_state()
         token = get_stored_github_token()
-        # Prefer installer (.exe) if available for seamless silent update & desktop integration
         has_installer = bool(self.release_info.get("installer_url"))
         download_installer = use_installer or has_installer
         self.download_worker = UpdateDownloadWorker(
@@ -689,4 +752,3 @@ class UpdateDialog(QDialog):
         if self.restart_timer:
             self.restart_timer.stop()
         super().reject()
-
