@@ -43,6 +43,7 @@ def build():
         "--hidden-import", "spellchecker",
         "--collect-all", "pyaudiowpatch",
         "--hidden-import", "pyaudiowpatch",
+        "--hidden-import", "numpy",
     ]
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])
