@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end encrypted cloud sync and revision history.
 - Cross-platform mobile clients for Android and iOS.
 
+## [1.7.1] - 2026-09-22
+
+### Fixed
+- **Auto-Update Installer Now Actually Launches:** Fixed 5 compounding bugs that prevented the update installer from executing after download:
+  - Removed `close_fds=True` from `subprocess.Popen` which silently killed the batch process on Windows.
+  - Added explicit `stdin/stdout/stderr=subprocess.DEVNULL` for proper detached process I/O handling.
+  - Hardened batch script: added `cd /d %~dp0`, retry limits on wait loops, `ERRORLEVEL` checking after installer execution, and replaced fragile `(goto) 2>nul` self-delete trick with clean `exit /b 0`.
+  - Replaced locale-dependent `ping 127.0.0.1` delay with `timeout /t N /nobreak`.
+  - Added 0.5s grace period between `Popen()` and `sys.exit(0)` to prevent shutdown race condition.
+- **Diagnostic Logging for Updates:** All update operations now write detailed logs to `%TEMP%\StickyNotes_Update\update.log` for post-mortem diagnosis.
+- **Error Reporting in Update Dialog:** `_apply_update()` now catches and displays exceptions in a user-facing error dialog instead of failing silently.
+- **Inno Setup Logging:** Added `SetupLogging=yes` to installer configuration for diagnosing silent install failures.
+
+### Added
+- 3 new automated tests verifying batch script correctness, subprocess flags, and missing file handling.
+
 ## [1.7.0] - 2026-09-21
 
 ### Added & Overhauled

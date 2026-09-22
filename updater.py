@@ -437,14 +437,31 @@ def apply_update_and_restart(file_path_str: str) -> bool:
     """
     Applies the downloaded update package (.exe installer or .zip archive) and
     restarts Sticky Notes. In frozen production, replaces files or runs silent installer.
+
+    The batch script is launched as a fully detached process with its own I/O handles,
+    writes a diagnostic log to %TEMP%/StickyNotes_Update/update.log, and includes
+    error checking at each step.
     """
+    import time as _time
+
     file_path = Path(file_path_str)
     if not file_path.exists():
+        print(f"[UPDATE] ERROR: Update file does not exist: {file_path}")
         return False
 
     is_frozen = getattr(sys, 'frozen', False)
     current_pid = os.getpid()
-    bat_path = file_path.parent / "apply_update.bat"
+
+    # All update staging artifacts go in the same temp directory
+    staging_dir = file_path.parent
+    bat_path = staging_dir / "apply_update.bat"
+    log_path = staging_dir / "update.log"
+
+    print(f"[UPDATE] Applying update from: {file_path}")
+    print(f"[UPDATE] Batch script: {bat_path}")
+    print(f"[UPDATE] Log file: {log_path}")
+    print(f"[UPDATE] Current PID: {current_pid}")
+    print(f"[UPDATE] Frozen: {is_frozen}")
 
     # Case 1: Installer executable (.exe)
     if file_path.suffix.lower() == ".exe":
@@ -453,119 +470,201 @@ def apply_update_and_restart(file_path_str: str) -> bool:
         app_dir = Path(sys.executable).resolve().parent if is_frozen else installed_dir
         target_exe = app_dir / "StickyNotes.exe"
 
+        print(f"[UPDATE] Installer mode: app_dir={app_dir}, target_exe={target_exe}")
+
         batch_script = f"""@echo off
 setlocal enabledelayedexpansion
-echo [Sticky Notes Updater] Closing application (PID {current_pid})...
+cd /d "%~dp0"
 
-:: 1. Force close the existing application process to ensure zero file locks
+:: Redirect all output to log file for diagnostics
+echo ============================================ >> "{log_path}"
+echo [%date% %time%] Sticky Notes Auto-Updater  >> "{log_path}"
+echo ============================================ >> "{log_path}"
+echo PID to close: {current_pid} >> "{log_path}"
+echo Installer: {file_path} >> "{log_path}"
+echo Target dir: {app_dir} >> "{log_path}"
+
+:: 1. Force close the running application
+echo [%time%] Closing application (PID {current_pid})... >> "{log_path}"
 taskkill /f /pid {current_pid} >nul 2>&1
+
+:: Wait for the process to fully exit (max ~20 seconds)
+set RETRIES=0
 :WAIT_LOOP
-tasklist /fi "pid eq {current_pid}" | find "{current_pid}" >nul
+tasklist /fi "pid eq {current_pid}" 2>nul | find "{current_pid}" >nul
 if not errorlevel 1 (
-    ping 127.0.0.1 -n 2 >nul
+    set /a RETRIES+=1
+    if !RETRIES! GEQ 10 (
+        echo [%time%] WARNING: Process still running after 10 retries, proceeding anyway >> "{log_path}"
+        goto INSTALL_STEP
+    )
+    timeout /t 2 /nobreak >nul 2>&1
     taskkill /f /pid {current_pid} >nul 2>&1
     goto WAIT_LOOP
 )
+echo [%time%] Application closed successfully >> "{log_path}"
 
-:: 2. Run installer and WAIT for it to completely finish
-echo [Sticky Notes Updater] Running installer...
+:INSTALL_STEP
+:: 2. Run the Inno Setup installer silently and WAIT for completion
+echo [%time%] Running installer: {file_path} >> "{log_path}"
+echo [%time%] Args: /SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="{app_dir}" >> "{log_path}"
 start /wait "" "{file_path}" /SILENT /NORESTART /CLOSEAPPLICATIONS /DIR="{app_dir}"
+set INSTALL_EXIT=%ERRORLEVEL%
+echo [%time%] Installer finished with exit code: !INSTALL_EXIT! >> "{log_path}"
 
-:: 3. Launch the updated application (check app_dir first, then installed_exe)
-echo [Sticky Notes Updater] Launching updated application...
-ping 127.0.0.1 -n 2 >nul
+if !INSTALL_EXIT! NEQ 0 (
+    echo [%time%] WARNING: Installer returned non-zero exit code !INSTALL_EXIT! >> "{log_path}"
+)
+
+:: 3. Launch the updated application
+echo [%time%] Looking for updated executable... >> "{log_path}"
+timeout /t 2 /nobreak >nul 2>&1
 if exist "{target_exe}" (
+    echo [%time%] Launching: {target_exe} >> "{log_path}"
     start "" "{target_exe}"
 ) else if exist "{installed_exe}" (
+    echo [%time%] Launching fallback: {installed_exe} >> "{log_path}"
     start "" "{installed_exe}"
+) else (
+    echo [%time%] ERROR: No executable found to launch! >> "{log_path}"
+    echo [%time%] Checked: {target_exe} >> "{log_path}"
+    echo [%time%] Checked: {installed_exe} >> "{log_path}"
 )
 
-:: 4. Clean up staging files
-echo [Sticky Notes Updater] Cleaning up staging files...
-ping 127.0.0.1 -n 2 >nul
+:: 4. Clean up the downloaded installer (keep log for diagnostics)
+echo [%time%] Cleaning up installer file... >> "{log_path}"
+timeout /t 2 /nobreak >nul 2>&1
 del "{file_path}" >nul 2>&1
-(goto) 2>nul & del "%~f0"
+
+echo [%time%] Update process complete >> "{log_path}"
+
+:: Self-delete this batch script
+del "%~f0" >nul 2>&1
+exit /b 0
 """
-        with open(bat_path, "w", encoding="utf-8") as f:
-            f.write(batch_script)
-
-        subprocess.Popen(
-            ["cmd.exe", "/c", str(bat_path)],
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-            close_fds=True
-        )
-
-        from PySide6.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app:
-            app.quit()
-        sys.exit(0)
+        _launch_update_script(bat_path, batch_script, log_path)
 
     # Case 2: Zip package (.zip)
-    if not is_frozen:
-        # Development mode cannot overwrite running Python files with ZIP
-        return False
+    elif file_path.suffix.lower() == ".zip":
+        if not is_frozen:
+            # Development mode cannot overwrite running Python files with ZIP
+            print("[UPDATE] Cannot apply ZIP update in development mode")
+            return False
 
-    temp_extract_dir = file_path.parent / "extracted"
-    if temp_extract_dir.exists():
-        import shutil
-        shutil.rmtree(temp_extract_dir, ignore_errors=True)
-    temp_extract_dir.mkdir(parents=True, exist_ok=True)
+        temp_extract_dir = staging_dir / "extracted"
+        if temp_extract_dir.exists():
+            import shutil
+            shutil.rmtree(temp_extract_dir, ignore_errors=True)
+        temp_extract_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        with zipfile.ZipFile(file_path, "r") as zip_ref:
-            zip_ref.extractall(temp_extract_dir)
-    except Exception as e:
-        print(f"[ERROR] Failed to extract update ZIP: {e}")
-        return False
+        try:
+            with zipfile.ZipFile(file_path, "r") as zip_ref:
+                zip_ref.extractall(temp_extract_dir)
+        except Exception as e:
+            print(f"[UPDATE] ERROR: Failed to extract update ZIP: {e}")
+            return False
 
-    payload_dir = temp_extract_dir
-    candidates = list(temp_extract_dir.glob("**/StickyNotes.exe"))
-    if candidates:
-        payload_dir = candidates[0].parent
+        payload_dir = temp_extract_dir
+        candidates = list(temp_extract_dir.glob("**/StickyNotes.exe"))
+        if candidates:
+            payload_dir = candidates[0].parent
 
-    app_target_dir = Path(sys.executable).resolve().parent
-    exe_path = Path(sys.executable).resolve()
+        app_target_dir = Path(sys.executable).resolve().parent
+        exe_path = Path(sys.executable).resolve()
 
-    batch_script = f"""@echo off
+        print(f"[UPDATE] ZIP mode: payload={payload_dir}, target={app_target_dir}")
+
+        batch_script = f"""@echo off
 setlocal enabledelayedexpansion
-echo [Sticky Notes Updater] Closing application (PID {current_pid})...
+cd /d "%~dp0"
 
-:: 1. Force close the existing application process
+echo ============================================ >> "{log_path}"
+echo [%date% %time%] Sticky Notes ZIP Updater   >> "{log_path}"
+echo ============================================ >> "{log_path}"
+
+:: 1. Force close the running application
+echo [%time%] Closing application (PID {current_pid})... >> "{log_path}"
 taskkill /f /pid {current_pid} >nul 2>&1
+
+set RETRIES=0
 :WAIT_LOOP
-tasklist /fi "pid eq {current_pid}" | find "{current_pid}" >nul
+tasklist /fi "pid eq {current_pid}" 2>nul | find "{current_pid}" >nul
 if not errorlevel 1 (
-    ping 127.0.0.1 -n 2 >nul
+    set /a RETRIES+=1
+    if !RETRIES! GEQ 10 (
+        echo [%time%] WARNING: Process still running after 10 retries >> "{log_path}"
+        goto COPY_STEP
+    )
+    timeout /t 2 /nobreak >nul 2>&1
     taskkill /f /pid {current_pid} >nul 2>&1
     goto WAIT_LOOP
 )
+echo [%time%] Application closed successfully >> "{log_path}"
 
+:COPY_STEP
 :: 2. Apply update files via robocopy
-echo [Sticky Notes Updater] Applying update files...
-robocopy "{payload_dir}" "{app_target_dir}" /E /NP /R:3 /W:1 >nul
+echo [%time%] Copying files from {payload_dir} to {app_target_dir} >> "{log_path}"
+robocopy "{payload_dir}" "{app_target_dir}" /E /NP /R:3 /W:1 >> "{log_path}" 2>&1
+echo [%time%] Robocopy exit code: !ERRORLEVEL! >> "{log_path}"
 
 :: 3. Relaunch updated application
-echo [Sticky Notes Updater] Relaunching application...
-ping 127.0.0.1 -n 2 >nul
+echo [%time%] Launching: {exe_path} >> "{log_path}"
+timeout /t 2 /nobreak >nul 2>&1
 start "" "{exe_path}"
 
 :: 4. Clean up staging files
-echo [Sticky Notes Updater] Cleaning up staging files...
-ping 127.0.0.1 -n 3 >nul
+echo [%time%] Cleaning up staging files... >> "{log_path}"
+timeout /t 3 /nobreak >nul 2>&1
 rd /s /q "{temp_extract_dir}" >nul 2>&1
 del "{file_path}" >nul 2>&1
-(goto) 2>nul & del "%~f0"
+
+echo [%time%] Update process complete >> "{log_path}"
+
+del "%~f0" >nul 2>&1
+exit /b 0
 """
+        _launch_update_script(bat_path, batch_script, log_path)
+
+    else:
+        print(f"[UPDATE] Unsupported file type: {file_path.suffix}")
+        return False
+
+    # Should not reach here — _launch_update_script calls sys.exit(0)
+    return True
+
+
+def _launch_update_script(bat_path: Path, batch_script: str, log_path: Path):
+    """
+    Writes and launches the update batch script as a fully detached process,
+    then gracefully shuts down the current application.
+
+    Best practices for Windows detached process launch:
+    - DEVNULL for stdin/stdout/stderr (prevents handle inheritance issues)
+    - DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP (fully independent process)
+    - No close_fds=True (incompatible with handle redirection on Windows)
+    - Brief delay after Popen to ensure batch script has started
+    """
+    import time as _time
 
     with open(bat_path, "w", encoding="utf-8") as f:
         f.write(batch_script)
 
+    print(f"[UPDATE] Launching update script: {bat_path}")
+
     subprocess.Popen(
         ["cmd.exe", "/c", str(bat_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
-        close_fds=True
     )
+
+    # Brief delay to ensure the batch script process has been created and is running
+    # before we tear down the Python process. Without this, the batch script may not
+    # have called taskkill yet when sys.exit() runs.
+    _time.sleep(0.5)
+
+    print(f"[UPDATE] Shutting down application. Check log at: {log_path}")
 
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance()

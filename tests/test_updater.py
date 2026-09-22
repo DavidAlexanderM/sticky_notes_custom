@@ -27,7 +27,7 @@ from updater import (
     get_stored_github_token, save_stored_github_token,
     get_stored_mirror_url, save_stored_mirror_url,
     parse_release_payload, DEFAULT_PUBLIC_MANIFEST_URL,
-    UpdateCheckWorker
+    UpdateCheckWorker, apply_update_and_restart, _launch_update_script
 )
 from components.update_dialog import UpdateDialog
 from scripts.generate_release_manifest import generate_manifest
@@ -251,6 +251,100 @@ class TestUpdater(unittest.TestCase):
             # Verify valid sig
             self.assertTrue(valid_exe.read_bytes()[:2] == b"MZ")
             self.assertGreaterEqual(valid_exe.stat().st_size, 102400)
+
+
+    def test_apply_update_writes_batch_script(self):
+        """Verifies that apply_update_and_restart writes a correct batch script with logging and error checking."""
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            fake_exe = tmp_path / "StickyNotes_Setup_v1.8.0.exe"
+            fake_exe.write_bytes(b"MZ\x90\x00" + b"\x00" * 150000)
+
+            # Mock subprocess.Popen, sys.exit, time.sleep, and QApplication
+            with patch("updater.subprocess.Popen") as mock_popen, \
+                 patch("updater.sys.exit") as mock_exit, \
+                 patch("PySide6.QtWidgets.QApplication.instance", return_value=MagicMock()), \
+                 patch("time.sleep"):
+
+                apply_update_and_restart(str(fake_exe))
+
+                # Verify batch script was written
+                bat_path = tmp_path / "apply_update.bat"
+                self.assertTrue(bat_path.exists(), "Batch script was not created")
+
+                bat_content = bat_path.read_text(encoding="utf-8")
+
+                # Must have cd /d for directory safety
+                self.assertIn('cd /d "%~dp0"', bat_content)
+                # Must log to update.log
+                self.assertIn("update.log", bat_content)
+                # Must use timeout instead of ping for delays
+                self.assertIn("timeout /t", bat_content)
+                self.assertNotIn("ping 127.0.0.1", bat_content)
+                # Must include installer arguments
+                self.assertIn("/SILENT", bat_content)
+                self.assertIn("/NORESTART", bat_content)
+                self.assertIn("/CLOSEAPPLICATIONS", bat_content)
+                # Must check installer exit code
+                self.assertIn("INSTALL_EXIT", bat_content)
+                # Must include retry limit to prevent infinite wait loop
+                self.assertIn("RETRIES", bat_content)
+                # Must NOT use fragile (goto) self-delete trick
+                self.assertNotIn("(goto) 2>nul", bat_content)
+                # Must include clean exit
+                self.assertIn("exit /b 0", bat_content)
+
+    def test_apply_update_subprocess_flags(self):
+        """Verifies Popen is called with DEVNULL handles and without close_fds=True."""
+        from unittest.mock import patch, MagicMock, call
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            fake_exe = tmp_path / "StickyNotes_Setup_v1.8.0.exe"
+            fake_exe.write_bytes(b"MZ\x90\x00" + b"\x00" * 150000)
+
+            with patch("updater.subprocess.Popen") as mock_popen, \
+                 patch("updater.sys.exit") as mock_exit, \
+                 patch("PySide6.QtWidgets.QApplication.instance", return_value=MagicMock()), \
+                 patch("time.sleep"):
+
+                apply_update_and_restart(str(fake_exe))
+
+                # Verify Popen was called exactly once
+                self.assertEqual(mock_popen.call_count, 1)
+
+                popen_call = mock_popen.call_args
+                kwargs = popen_call.kwargs if popen_call.kwargs else {}
+
+                # Must use DEVNULL for all standard handles
+                self.assertEqual(kwargs.get("stdin"), subprocess.DEVNULL,
+                                 "stdin must be DEVNULL for detached process")
+                self.assertEqual(kwargs.get("stdout"), subprocess.DEVNULL,
+                                 "stdout must be DEVNULL for detached process")
+                self.assertEqual(kwargs.get("stderr"), subprocess.DEVNULL,
+                                 "stderr must be DEVNULL for detached process")
+
+                # Must NOT use close_fds=True (incompatible with handle redirection on Windows)
+                self.assertNotIn("close_fds", kwargs,
+                                 "close_fds must not be passed (incompatible with DEVNULL on Windows)")
+
+                # Must use DETACHED_PROCESS flag
+                flags = kwargs.get("creationflags", 0)
+                self.assertTrue(flags & subprocess.DETACHED_PROCESS,
+                                "DETACHED_PROCESS flag must be set")
+                self.assertTrue(flags & subprocess.CREATE_NEW_PROCESS_GROUP,
+                                "CREATE_NEW_PROCESS_GROUP flag must be set")
+
+                # sys.exit(0) must be called after Popen
+                mock_exit.assert_called_once_with(0)
+
+    def test_apply_update_handles_missing_file(self):
+        """Verifies graceful failure when the installer file doesn't exist."""
+        result = apply_update_and_restart("C:/nonexistent/path/StickyNotes_Setup.exe")
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":

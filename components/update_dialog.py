@@ -725,21 +725,42 @@ class UpdateDialog(QDialog):
         is_frozen = getattr(sys, 'frozen', False)
         is_exe = file_path.suffix.lower() == ".exe"
 
-        if is_frozen:
-            apply_update_and_restart(str(file_path))
-        elif is_exe:
-            import os
-            if hasattr(os, 'startfile'):
-                os.startfile(str(file_path))
+        try:
+            if is_frozen:
+                # Production mode: launch batch script that replaces files and restarts
+                apply_update_and_restart(str(file_path))
+            elif is_exe:
+                # Development mode with .exe installer: just run the installer directly
+                import os
+                if hasattr(os, 'startfile'):
+                    os.startfile(str(file_path))
+                else:
+                    import subprocess
+                    subprocess.Popen(
+                        [str(file_path)],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                self.accept()
             else:
-                import subprocess
-                subprocess.Popen([str(file_path)])
-            self.accept()
-        else:
-            QMessageBox.information(
+                # Development mode with .zip: just show the download location
+                QMessageBox.information(
+                    self,
+                    "Development Mode",
+                    f"Update package successfully downloaded to:\n{file_path}\n\nIn development mode, please run git pull or extract the ZIP."
+                )
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent)))
+        except SystemExit:
+            # apply_update_and_restart() calls sys.exit(0) on success — let it through
+            raise
+        except Exception as e:
+            QMessageBox.critical(
                 self,
-                "Development Mode",
-                f"Update package successfully downloaded to:\n{file_path}\n\nIn development mode, please run git pull or extract the ZIP."
+                "Update Failed",
+                f"Failed to apply the update:\n\n{str(e)}\n\n"
+                f"The downloaded installer is at:\n{file_path}\n\n"
+                f"You can run it manually to update."
             )
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent)))
 
